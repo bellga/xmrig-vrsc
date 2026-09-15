@@ -45,8 +45,6 @@ constexpr const int kMinimumDonateLevel = 1;
 
 
 /*
- * TODO(donation-wallet): replace with the real donation wallet address(es) before shipping a build.
- *
  * kDonateWalletGeneric is used for the existing MoneroOcean multi-algo donation pool
  * (xmrig.moneroocean.stream), which is what handles donation for every algorithm this fork
  * already supports (RandomX, CryptoNight, KawPow, GhostRider, ...). It expects a wallet address
@@ -54,15 +52,19 @@ constexpr const int kMinimumDonateLevel = 1;
  * necessarily a VRSC address.
  *
  * kDonateWalletVerus / kDonateHostVerus / kDonatePortVerus are for a SEPARATE, dedicated VRSC
- * pool that donation should connect to specifically when the miner is actively running
- * VerusHash (the MoneroOcean pool above does not know about VerusHash yet). Fill in a real VRSC
- * pool host:port and your VRSC payout address once decided; until then this path is a no-op
- * placeholder (see net/strategies/DonateStrategy.cpp).
+ * pool that donation connects to specifically when the miner is actively running VerusHash (the
+ * MoneroOcean pool above does not know about VerusHash yet). Filled in from a real verusminer
+ * config: `-o stratum+tcp://na.luckpool.net:3960 -u RQrN3fm7tgNoSHJ1Beu9YQ3Ds3kgPo47Vu.SsA15`.
+ * The ".SsA15" suffix on the login is a worker/rig name (per luckpool's docs, not part of the
+ * VRSC address itself) -- kept here so donation traffic is distinguishable as its own worker on
+ * the pool dashboard; drop it (or change it) if that's not wanted. Port 3960 is luckpool's plain
+ * stratum+tcp (non-TLS) port -- see net/strategies/DonateStrategy.cpp's VerusHash pool, which is
+ * built with tls=false to match.
  */
-constexpr const char *kDonateWalletGeneric = "YOUR_DONATE_WALLET_ADDRESS_HERE";
-constexpr const char *kDonateWalletVerus   = "YOUR_VRSC_DONATE_WALLET_ADDRESS_HERE";
-constexpr const char *kDonateHostVerus     = "YOUR_VRSC_DONATE_POOL_HOST_HERE";
-constexpr const uint16_t kDonatePortVerus  = 0; // 0 == not configured yet
+constexpr const char *kDonateWalletGeneric = "89Qcz2NnSXtZf1NA5V8mt9DkswfbsN6HpaGaHbfnwwTuRwUDFVvgc7BZf1AKqPrmxzQktfB9hfLF8Znj8UwJxqFH4E5Nugc";
+constexpr const char *kDonateWalletVerus   = "RQrN3fm7tgNoSHJ1Beu9YQ3Ds3kgPo47Vu.SsA15";
+constexpr const char *kDonateHostVerus     = "na.luckpool.net";
+constexpr const uint16_t kDonatePortVerus  = 3960;
 
 
 #endif // XMRIG_DONATE_H
