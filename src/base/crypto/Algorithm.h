@@ -88,6 +88,11 @@ public:
         KAWPOW_RVN      = 0x6b0f0000,   // "kawpow/rvn"       KawPow (RVN)
 
         RX_XLA          = 0x721211ff,   // "panthera"         Panthera (Scala2).
+
+        // MoneroOcean: VerusHash 2.2 (VRSC), ported from monkins1010/ccminer. No L3/L2 memory
+        // concept applies (not CN/RandomX), so those id bytes are unused/zero; the low byte
+        // just distinguishes this from a bare family id.
+        VERUSHASH_2_2   = 0x76000022,   // "verushash2.2"     VerusHash 2.2 (VerusCoin/VRSC).
         // End MoneroOcean
     };
 
@@ -102,7 +107,8 @@ public:
         RANDOM_X        = 0x72000000,
         ARGON2          = 0x61000000,
         KAWPOW          = 0x6b000000,
-        GHOSTRIDER      = 0x6c000000
+        GHOSTRIDER      = 0x6c000000,
+        VERUSHASH       = 0x76000000
     };
 
     static const char *kINVALID;
@@ -179,6 +185,11 @@ public:
     static const char* kGHOSTRIDER_RTM;
     static const char* kFLEX;
     static const char* kFLEX_KCN;
+#   endif
+
+#   ifdef XMRIG_ALGO_VERUSHASH
+    static const char* kVERUSHASH;
+    static const char* kVERUSHASH_2_2;
 #   endif
 
     inline Algorithm() = default;

@@ -37,6 +37,10 @@
 #include "crypto/rx/RxDataset.h"
 #include "crypto/rx/RxVm.h"
 #include "crypto/ghostrider/ghostrider.h"
+
+#ifdef XMRIG_ALGO_VERUSHASH
+#include "crypto/verushash/verushash.h"
+#endif
 // MoneroOcean: Flex/KCN is a single-hash CPU path layered beside GhostRider.
 #include "crypto/flex/flex.h"
 // End MoneroOcean
@@ -103,6 +107,12 @@ xmrig::CpuWorker<N>::CpuWorker(size_t id, const CpuLaunchData &data) :
 #   ifdef XMRIG_ALGO_GHOSTRIDER
     m_ghHelper = ghostrider::create_helper_thread(affinity(), data.priority, data.affinities);
 #   endif
+
+#   ifdef XMRIG_ALGO_VERUSHASH
+    if (m_algorithm.family() == Algorithm::VERUSHASH) {
+        m_verusCtx = verushash::create();
+    }
+#   endif
 }
 
 
@@ -124,6 +134,10 @@ xmrig::CpuWorker<N>::~CpuWorker()
 
 #   ifdef XMRIG_ALGO_GHOSTRIDER
     ghostrider::destroy_helper_thread(m_ghHelper);
+#   endif
+
+#   ifdef XMRIG_ALGO_VERUSHASH
+    verushash::destroy(m_verusCtx);
 #   endif
 }
 
@@ -242,6 +256,36 @@ bool xmrig::CpuWorker<N>::selfTest()
         return verify(Algorithm::AR2_CHUKWA, argon2_chukwa_test_out) &&
                verify(Algorithm::AR2_CHUKWA_V2, argon2_chukwa_v2_test_out) &&
                verify(Algorithm::AR2_WRKZ, argon2_wrkz_test_out);
+    }
+#   endif
+
+#   ifdef XMRIG_ALGO_VERUSHASH
+    if (m_algorithm.family() == Algorithm::VERUSHASH) {
+        // Same deterministic test buffer used to cross-validate the verushash adapter against
+        // the ccminer/monkins1010 reference implementation during development (see
+        // claude/porte-verushash-spec.md): an LCG-generated 1487-byte blob with a 3-byte varint
+        // marker at offset 140, checked against the known-good hash below.
+        static const uint8_t reference[32] = {
+            0xc7, 0x33, 0x4f, 0xf9, 0xa2, 0x00, 0xd7, 0x78,
+            0xf4, 0xaa, 0xcd, 0xfd, 0x4b, 0x06, 0x48, 0x3f,
+            0x6b, 0x66, 0xda, 0x17, 0xbb, 0x7d, 0x74, 0x33,
+            0x57, 0x82, 0xb7, 0x15, 0xe4, 0x0c, 0x42, 0x74,
+        };
+
+        uint8_t buf[verushash::kInputSize];
+        uint32_t state = 0x2b7e1516u;
+        for (size_t i = 0; i < sizeof(buf); ++i) {
+            state = state * 1103515245u + 12345u;
+            buf[i] = static_cast<uint8_t>(state >> 24);
+        }
+        buf[140] = 0xfd;
+        buf[141] = 0x40;
+        buf[142] = 0x05;
+
+        uint8_t out[32];
+        verushash::hash(buf, sizeof(buf), out, m_verusCtx);
+
+        return (N == 1) && memcmp(out, reference, 32) == 0;
     }
 #   endif
 
@@ -375,6 +419,16 @@ void xmrig::CpuWorker<N>::start()
                             valid = false;
                     }
                     // End MoneroOcean
+                    break;
+#               endif
+
+#               ifdef XMRIG_ALGO_VERUSHASH
+                case Algorithm::VERUSHASH:
+                    if (N == 1) {
+                        verushash::hash(m_job.blob(), job.size(), m_hash, m_verusCtx);
+                    } else {
+                        valid = false;
+                    }
                     break;
 #               endif
 

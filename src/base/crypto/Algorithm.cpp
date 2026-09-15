@@ -118,6 +118,13 @@ const char *Algorithm::kRX_XLA          = "panthera";
 // End MoneroOcean
 #endif
 
+#ifdef XMRIG_ALGO_VERUSHASH
+// MoneroOcean: VerusHash 2.2 (VRSC), ported from monkins1010/ccminer.
+const char* Algorithm::kVERUSHASH       = "verushash2.2";
+const char* Algorithm::kVERUSHASH_2_2   = "verushash2.2";
+// End MoneroOcean
+#endif
+
 
 #define ALGO_NAME(ALGO)         { Algorithm::ALGO, Algorithm::k##ALGO }
 #define ALGO_ALIAS(ALGO, NAME)  { NAME, Algorithm::ALGO }
@@ -194,6 +201,12 @@ static const std::map<uint32_t, const char *> kAlgorithmNames = {
     ALGO_NAME(GHOSTRIDER_RTM),
     // MoneroOcean: register Flex/KCN as a GhostRider-family runtime variant.
     ALGO_NAME(FLEX_KCN),
+    // End MoneroOcean
+#   endif
+
+#   ifdef XMRIG_ALGO_VERUSHASH
+    // MoneroOcean: register VerusHash 2.2 (VRSC).
+    ALGO_NAME(VERUSHASH_2_2),
     // End MoneroOcean
 #   endif
 };
@@ -330,6 +343,14 @@ static const std::map<const char *, Algorithm::Id, aliasCompare> kAlgorithmAlias
     // MoneroOcean: Flex/KCN is announced by pools as flex or flex/kcn.
     ALGO_ALIAS_AUTO(FLEX_KCN), ALGO_ALIAS(FLEX_KCN, "flex/kcn"),
                                ALGO_ALIAS(FLEX_KCN, "flex"),
+    // End MoneroOcean
+#   endif
+
+#   ifdef XMRIG_ALGO_VERUSHASH
+    // MoneroOcean: accept the common short names VRSC pools/miners use.
+    ALGO_ALIAS_AUTO(VERUSHASH_2_2), ALGO_ALIAS(VERUSHASH_2_2, "verushash"),
+                                    ALGO_ALIAS(VERUSHASH_2_2, "verus"),
+                                    ALGO_ALIAS(VERUSHASH_2_2, "vrsc"),
     // End MoneroOcean
 #   endif
 };

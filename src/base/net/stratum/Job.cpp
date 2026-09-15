@@ -161,6 +161,16 @@ size_t xmrig::Job::nonceOffset() const
     case Algorithm::GHOSTRIDER:
         return 76;
 
+    case Algorithm::VERUSHASH:
+        // MoneroOcean: the 1487-byte blob's last 15 bytes (offset 1472 = 1487 - 15) are the
+        // repurposed Equihash-solution nonce/entropy space. VerusHashHalf folds input in
+        // complete 32-byte chunks and 1487 % 32 == 15, so those trailing 15 bytes never feed
+        // into that fold -- only the first 1472 bytes (the real block header) determine the
+        // per-job key table. That's what lets verushash::hash() skip regenerating it on every
+        // nonce attempt (see src/crypto/verushash/verushash.cpp). Only the first 4 of those 15
+        // bytes are used as XMRig's incrementing nonce counter (nonceSize() stays the default).
+        return 1472;
+
     default:
         break;
     }

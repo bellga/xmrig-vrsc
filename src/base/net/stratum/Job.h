@@ -50,7 +50,10 @@ public:
     // SECOR increase requirements for blob size: https://github.com/xmrig/xmrig/issues/913
     // Haven (XHV) offshore increases requirements by adding pricing_record struct (192 bytes) to block_header.
     // Round it up to 408 (136*3) for a convenient keccak calculation in OpenCL
-    static constexpr const size_t kMaxBlobSize = 408;
+    // MoneroOcean: VerusHash repurposes the old Equihash solution field as extra nonce/entropy
+    // space, making its job blob 1487 bytes (140-byte header + 3-byte solution-size varint +
+    // 1344-byte solution area) -- bumped to 1536 (next round number with headroom) to fit it.
+    static constexpr const size_t kMaxBlobSize = 1536;
     static constexpr const size_t kMaxSeedSize = 32;
 
     Job() = default;

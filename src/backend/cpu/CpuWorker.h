@@ -42,6 +42,10 @@ class RxVm;
 namespace ghostrider { struct HelperThread; }
 #endif
 
+#ifdef XMRIG_ALGO_VERUSHASH
+namespace verushash { struct Context; }
+#endif
+
 
 template<size_t N>
 class CpuWorker : public Worker
@@ -105,6 +109,10 @@ private:
 
 #   ifdef XMRIG_ALGO_GHOSTRIDER
     ghostrider::HelperThread* m_ghHelper = nullptr;
+#   endif
+
+#   ifdef XMRIG_ALGO_VERUSHASH
+    verushash::Context* m_verusCtx = nullptr;
 #   endif
 
 #   ifdef XMRIG_FEATURE_BENCHMARK

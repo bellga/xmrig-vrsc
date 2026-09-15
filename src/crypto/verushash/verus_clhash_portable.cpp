@@ -18,7 +18,11 @@
  **/
 
 
-#include "verus_hash.h"
+// #include "verus_hash.h" -- dead include: this fork's verus_hash.h/.cpp define a CVerusHashV2
+// class that references an undefined 'verusclhasher' (it's not the code path the real miner
+// uses -- see claude/porte-verushash-spec.md). Neither verus_hash.h nor verus_hash.cpp are
+// compiled into this module for that reason; this file never uses any CVerusHash symbol anyway.
+#include "verus_clhash.h"
 
 #include <assert.h>
 #include <string.h>
