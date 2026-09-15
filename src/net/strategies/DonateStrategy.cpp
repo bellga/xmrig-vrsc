@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstring>
 #include <iterator>
 
 
@@ -35,6 +36,7 @@
 #include "core/config/Config.h"
 #include "core/Controller.h"
 #include "core/Miner.h"
+#include "donate.h"
 #include "net/Network.h"
 
 
@@ -62,7 +64,9 @@ xmrig::DonateStrategy::DonateStrategy(Controller *controller, IStrategyListener 
 #   else
     constexpr Pool::Mode mode = Pool::MODE_POOL;
 #   endif
-    static char donate_user[] = "89TxfrUmqJJcb1V124WsUzA78Xa3UYHt7Bg8RGMhXVeZYPN8cE5CZEk58Y1m23ZMLHN7wYeJ9da5n5MXharEjrm41hSnWHL";
+    // TODO(donation-wallet): kDonateWalletGeneric is a placeholder, see src/donate.h.
+    static char donate_user[128] = { 0 };
+    strncpy(donate_user, kDonateWalletGeneric, sizeof(donate_user) - 1);
     // End MoneroOcean
 
 #   ifdef XMRIG_FEATURE_TLS
@@ -79,6 +83,16 @@ xmrig::DonateStrategy::DonateStrategy(Controller *controller, IStrategyListener 
         m_strategy = new SinglePoolStrategy(m_pools.front(), 10, 2, this, true);
     }
 
+#   ifdef XMRIG_ALGO_VERUSHASH
+    // Dedicated VRSC donation pool, only used while the active algorithm is VerusHash (the
+    // generic MoneroOcean pool above doesn't support it). Left inert until a real host/port is
+    // filled in in src/donate.h (kDonatePortVerus == 0 means "not configured yet").
+    if (kDonatePortVerus != 0) {
+        m_poolsVerus.emplace_back(kDonateHostVerus, kDonatePortVerus, kDonateWalletVerus, nullptr, nullptr, 0, true, false, Pool::MODE_POOL);
+        m_strategyVerus = new SinglePoolStrategy(m_poolsVerus.front(), 10, 2, this, true);
+    }
+#   endif
+
     m_timer = new Timer(this);
 
     setState(STATE_IDLE);
@@ -89,6 +103,10 @@ xmrig::DonateStrategy::~DonateStrategy()
 {
     delete m_timer;
     delete m_strategy;
+
+#   ifdef XMRIG_ALGO_VERUSHASH
+    delete m_strategyVerus;
+#   endif
 
     if (m_proxy) {
         m_proxy->deleteLater();
@@ -109,12 +127,21 @@ void xmrig::DonateStrategy::update(IClient *client, const Job &job)
 
 int64_t xmrig::DonateStrategy::submit(const JobResult &result)
 {
-    return m_proxy ? m_proxy->submit(result) : m_strategy->submit(result);
+    return m_proxy ? m_proxy->submit(result) : activeStrategy()->submit(result);
 }
 
 
 void xmrig::DonateStrategy::connect()
 {
+#   ifdef XMRIG_ALGO_VERUSHASH
+    // VerusHash donation goes straight to the dedicated VRSC pool, bypassing the
+    // proxy/tunnel path (that's only meaningful for the generic MoneroOcean pool).
+    if (activeStrategy() == m_strategyVerus) {
+        m_strategyVerus->connect();
+        return;
+    }
+#   endif
+
     m_proxy = createProxy();
     if (m_proxy) {
         m_proxy->connect();
@@ -131,12 +158,24 @@ void xmrig::DonateStrategy::setAlgo(const xmrig::Algorithm &algo)
     m_algorithm = algo;
 
     m_strategy->setAlgo(algo);
+
+#   ifdef XMRIG_ALGO_VERUSHASH
+    if (m_strategyVerus) {
+        m_strategyVerus->setAlgo(algo);
+    }
+#   endif
 }
 
 
 void xmrig::DonateStrategy::setProxy(const ProxyUrl &proxy)
 {
     m_strategy->setProxy(proxy);
+
+#   ifdef XMRIG_ALGO_VERUSHASH
+    if (m_strategyVerus) {
+        m_strategyVerus->setProxy(proxy);
+    }
+#   endif
 }
 
 
@@ -144,6 +183,12 @@ void xmrig::DonateStrategy::stop()
 {
     m_timer->stop();
     m_strategy->stop();
+
+#   ifdef XMRIG_ALGO_VERUSHASH
+    if (m_strategyVerus) {
+        m_strategyVerus->stop();
+    }
+#   endif
 }
 
 
@@ -153,6 +198,12 @@ void xmrig::DonateStrategy::tick(uint64_t now)
 
     m_strategy->tick(now);
 
+#   ifdef XMRIG_ALGO_VERUSHASH
+    if (m_strategyVerus) {
+        m_strategyVerus->tick(now);
+    }
+#   endif
+
     if (m_proxy) {
         m_proxy->tick(now);
     }
@@ -160,6 +211,21 @@ void xmrig::DonateStrategy::tick(uint64_t now)
     if (state() == STATE_WAIT && now > m_timestamp) {
         setState(STATE_IDLE);
     }
+}
+
+
+xmrig::IStrategy *xmrig::DonateStrategy::activeStrategy() const
+{
+#   ifdef XMRIG_ALGO_VERUSHASH
+    // NOTE: the family name here (Algorithm::VERUSHASH) must match whatever name is chosen when
+    // VERUSHASH_2_2 is registered in Algorithm::Id/Family (see the pending XMRig integration
+    // task in claude/porte-verushash-spec.md) -- update this if that name differs.
+    if (m_strategyVerus && m_algorithm.family() == Algorithm::VERUSHASH) {
+        return m_strategyVerus;
+    }
+#   endif
+
+    return m_strategy;
 }
 
 

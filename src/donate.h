@@ -20,10 +20,16 @@
 #define XMRIG_DONATE_H
 
 
+#include <cstdint>
+
+
 /*
- * Dev donation.
+ * Dev donation (this fork).
  *
- * Percentage of your hashing power that you want to donate to the developer can be 0% but supports XMRig Development.
+ * Percentage of hashing power donated to this fork's maintainer. The DEFAULT is 5%, but the
+ * end user can lower it in their config (`donate-level`) or via `--donate-level`. A MINIMUM of
+ * 1% is enforced and cannot be bypassed: if the user configures 0 or a negative value, the
+ * minimum applies instead of disabling donation entirely (see Pools::setDonateLevel()).
  *
  * Example of how it works for the setting of 1%:
  * Your miner will mine into your usual pool for a random time (in a range from 49.5 to 148.5 minutes),
@@ -33,12 +39,30 @@
  * Randomised only on the first round to prevent waves on the donation pool.
  *
  * Switching is instant and only happens after a successful connection, so you never lose any hashes.
- *
- * If you plan on changing donations to 0%, please consider making a one-off donation to my wallet:
- * XMR: 48edfHu7V9Z84YzzMa6fUueoELZ9ZRXq9VetWzYGzKt52XU5xvqgzYnDK9URnRoJMk1j8nLwEVsaSWJ4fhdUyZijBGUicoD
  */
-constexpr const int kDefaultDonateLevel = 1;
+constexpr const int kDefaultDonateLevel = 5;
 constexpr const int kMinimumDonateLevel = 1;
+
+
+/*
+ * TODO(donation-wallet): replace with the real donation wallet address(es) before shipping a build.
+ *
+ * kDonateWalletGeneric is used for the existing MoneroOcean multi-algo donation pool
+ * (xmrig.moneroocean.stream), which is what handles donation for every algorithm this fork
+ * already supports (RandomX, CryptoNight, KawPow, GhostRider, ...). It expects a wallet address
+ * valid for whatever coin that pool pays out donations in (check the pool's docs) -- it is NOT
+ * necessarily a VRSC address.
+ *
+ * kDonateWalletVerus / kDonateHostVerus / kDonatePortVerus are for a SEPARATE, dedicated VRSC
+ * pool that donation should connect to specifically when the miner is actively running
+ * VerusHash (the MoneroOcean pool above does not know about VerusHash yet). Fill in a real VRSC
+ * pool host:port and your VRSC payout address once decided; until then this path is a no-op
+ * placeholder (see net/strategies/DonateStrategy.cpp).
+ */
+constexpr const char *kDonateWalletGeneric = "YOUR_DONATE_WALLET_ADDRESS_HERE";
+constexpr const char *kDonateWalletVerus   = "YOUR_VRSC_DONATE_WALLET_ADDRESS_HERE";
+constexpr const char *kDonateHostVerus     = "YOUR_VRSC_DONATE_POOL_HOST_HERE";
+constexpr const uint16_t kDonatePortVerus  = 0; // 0 == not configured yet
 
 
 #endif // XMRIG_DONATE_H

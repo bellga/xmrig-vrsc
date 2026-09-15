@@ -222,9 +222,16 @@ void xmrig::Pools::toJSON(rapidjson::Value &out, rapidjson::Document &doc) const
 
 void xmrig::Pools::setDonateLevel(int level)
 {
-    if (level >= kMinimumDonateLevel && level <= 99) {
-        m_donateLevel = level;
+    // Donation percentage is user-editable, but the minimum (kMinimumDonateLevel) is enforced
+    // and cannot be bypassed: 0, negative, or any value below the minimum falls back to the
+    // minimum instead of being silently ignored (which previously left m_donateLevel at
+    // whatever it already was, i.e. the default).
+    if (level <= 0 || level < kMinimumDonateLevel) {
+        m_donateLevel = kMinimumDonateLevel;
+        return;
     }
+
+    m_donateLevel = (level <= 99) ? level : 99;
 }
 
 
