@@ -433,11 +433,21 @@ bool xmrig::VerusStratumClient::handleNotify(const rapidjson::Value &params)
     // this pool never sends mining.set_target at all (mining.set_difficulty only).
     if (m_haveNextTarget) {
         job.setTarget(m_nextTargetHex);
+        // setTarget() also sets m_diff = toDiff(m_target) as a side effect (Job::toDiff() is the
+        // Monero/RandomX-style 2^64/target formula) -- that's a DIFFERENT scale than VerusCoin's
+        // own diff convention (target_to_diff_verus, what m_nextDiff holds and what the pool's own
+        // dashboard/vardiff logic uses), so left alone it makes "new job"/"accepted" log lines show
+        // a diff number that doesn't match the pool's. It does NOT affect share acceptance --
+        // job.target() (m_target) is the raw bytes from the pool either way -- only what gets
+        // printed. Override it with the correctly-scaled number for display/logging.
+        if (m_nextDiff > 0.0) {
+            job.setDisplayDiff(static_cast<uint64_t>(std::ceil(m_nextDiff)));
+        }
         // DIAGNOSTIC (temporary): confirm the local target actually being used for the share
         // check, to compare against the diff-based m_target this replaces. Remove once diff
         // scaling is confirmed correct by acceptance rate.
-        LOG_INFO("%s verus job target: hex=%s -> local target=%llu", tag(), m_nextTargetHex,
-                  static_cast<unsigned long long>(job.target()));
+        LOG_INFO("%s verus job target: hex=%s -> local target=%llu (display diff=%llu)", tag(), m_nextTargetHex,
+                  static_cast<unsigned long long>(job.target()), static_cast<unsigned long long>(job.diff()));
     } else {
         job.setDiff(m_nextDiff > 0.0 ? static_cast<uint64_t>(std::ceil(m_nextDiff)) : 1);
     }

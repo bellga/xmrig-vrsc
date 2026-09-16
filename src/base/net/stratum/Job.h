@@ -73,6 +73,17 @@ public:
     void setDiff(uint64_t diff);
     void setSigKey(const char *sig_key);
 
+    // Overrides just the DISPLAY diff number (what shows up in "new job"/"accepted" log lines),
+    // without touching m_target. setDiff() can't be reused for this: it also recomputes
+    // m_target = toDiff(diff), which would clobber a target set directly via setTarget() (e.g.
+    // VerusStratumClient applying the pool's raw mining.set_target bytes). Needed because
+    // VerusCoin pools' own diff convention (target_to_diff_verus) is a different scale than
+    // Job::toDiff()'s Monero/RandomX-style 2^64/target -- setTarget() unavoidably sets m_diff via
+    // that generic formula too, so this corrects it afterward for pools where that mismatch would
+    // otherwise show a misleading diff number in logs (m_target itself, and therefore share
+    // acceptance, is unaffected either way).
+    inline void setDisplayDiff(uint64_t diff)           { m_diff = diff; }
+
     inline bool isNicehash() const                      { return m_nicehash; }
     inline bool isValid() const                         { return (m_size > 0 && m_diff > 0) || !m_poolWallet.isEmpty(); }
     inline bool setId(const char *id)                   { return (m_id = id); }
