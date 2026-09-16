@@ -327,9 +327,21 @@ bool xmrig::VerusStratumClient::handleNotify(const rapidjson::Value &params)
         return false;
     }
 
+    // NOTE (live-pool finding, na.luckpool.net): unlike ccminer's reference, which always
+    // expects a full 1344-byte solution, real-world notifications observed here carry a much
+    // shorter hex string (e.g. 229 or 177 bytes, varying per job). VerusCoin's actual on-wire
+    // solution (see VerusCoin/VerusCoin's primitives/solutiondata.h, CVerusSolutionVector) is a
+    // structured, variable-length PBaaS blob (descriptor + optional merge-mining headers +
+    // extra data), most of whose trailing bytes are typically zero on a plain (non-PBaaS,
+    // non-merge-mined) chain tip -- consistent with a pool-side stratum shim trimming trailing
+    // zero bytes before hex-encoding to save bandwidth, same idea as trailing-zero RLE that
+    // VerusCoin's own CCompactSolutionVector does for storage. We treat whatever's given as a
+    // left-aligned prefix of the full 1344-byte solution and zero-pad the rest, which is exactly
+    // what re-serializing "solution + zeros" produces if that hypothesis is right. This is
+    // unverified until we see whether shares built this way are accepted by the pool.
     const size_t solutionHexLen = strlen(vSolution.GetString());
-    if (solutionHexLen != kSolutionSize * 2) {
-        LOG_ERR("%s " RED("mining.notify: unexpected solution length %zu (want %zu)"), tag(), solutionHexLen, kSolutionSize * 2);
+    if (solutionHexLen == 0 || solutionHexLen > kSolutionSize * 2 || (solutionHexLen & 1)) {
+        LOG_ERR("%s " RED("mining.notify: unexpected solution length %zu (want 1..%zu, even)"), tag(), solutionHexLen, kSolutionSize * 2);
         return false;
     }
 
@@ -355,10 +367,14 @@ bool xmrig::VerusStratumClient::handleNotify(const rapidjson::Value &params)
     memcpy(header + kNNonceOff, m_xnonce1.data(), m_xnonce1.size());
     // remaining bytes already zero-initialized above.
 
-    Buffer solution(kSolutionSize);
-    if (!Cvt::fromHex(solution.data(), solution.size(), vSolution.GetString(), solutionHexLen)) {
+    // Zero-initialized (Buffer == std::vector<uint8_t>); we only decode into the prefix the
+    // pool actually sent, per the note above.
+    Buffer solution(kSolutionSize, 0);
+    if (!Cvt::fromHex(solution.data(), solutionHexLen / 2, vSolution.GetString(), solutionHexLen)) {
         return false;
     }
+
+    LOG_INFO("%s verus solution: pool sent %zu of %zu bytes (job %s)", tag(), solutionHexLen / 2, kSolutionSize, vJobId.GetString());
 
     // solution[0] is a VerusHash "extended solution" format version byte (not the block header's
     // own nVersion field), and solution[5] gates whether this job uses the extended layout --
