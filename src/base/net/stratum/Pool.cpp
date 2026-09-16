@@ -36,6 +36,10 @@
 #   include "base/net/stratum/EthStratumClient.h"
 #endif
 
+#ifdef XMRIG_ALGO_VERUSHASH
+#   include "base/net/stratum/VerusStratumClient.h"
+#endif
+
 
 #ifdef XMRIG_FEATURE_HTTP
 #   include "base/net/stratum/DaemonClient.h"
@@ -226,7 +230,14 @@ xmrig::IClient *xmrig::Pool::createClient(int id, IClientListener *listener) con
     IClient *client = nullptr;
 
     if (m_mode == MODE_POOL) {
+#       ifdef XMRIG_ALGO_VERUSHASH
+        if (m_algorithm.family() == Algorithm::VERUSHASH) {
+            client = new VerusStratumClient(id, Platform::userAgent(), listener);
+        }
+        else
+#       endif
 #       if defined XMRIG_ALGO_KAWPOW || defined XMRIG_ALGO_GHOSTRIDER
+        {
         const uint32_t f = m_algorithm.family();
         if ((f == Algorithm::KAWPOW) || (f == Algorithm::GHOSTRIDER) || (m_coin == Coin::RAVEN)) {
             client = new EthStratumClient(id, Platform::userAgent(), listener);
@@ -236,6 +247,7 @@ xmrig::IClient *xmrig::Pool::createClient(int id, IClientListener *listener) con
             client = new AutoClient(id, Platform::userAgent(), listener);
         }
         // End MoneroOcean
+        }
 #else
         {
             client = new Client(id, Platform::userAgent(), listener);

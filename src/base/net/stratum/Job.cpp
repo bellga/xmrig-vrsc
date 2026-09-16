@@ -163,13 +163,21 @@ size_t xmrig::Job::nonceOffset() const
 
     case Algorithm::VERUSHASH:
         // MoneroOcean: the 1487-byte blob's last 15 bytes (offset 1472 = 1487 - 15) are the
-        // repurposed Equihash-solution nonce/entropy space. VerusHashHalf folds input in
-        // complete 32-byte chunks and 1487 % 32 == 15, so those trailing 15 bytes never feed
-        // into that fold -- only the first 1472 bytes (the real block header) determine the
-        // per-job key table. That's what lets verushash::hash() skip regenerating it on every
-        // nonce attempt (see src/crypto/verushash/verushash.cpp). Only the first 4 of those 15
-        // bytes are used as XMRig's incrementing nonce counter (nonceSize() stays the default).
-        return 1472;
+        // repurposed Equihash-solution nonce/entropy space (our verushash::kNonceOffset).
+        // VerusHashHalf folds input in complete 32-byte chunks and 1487 % 32 == 15, so those
+        // trailing 15 bytes never feed into that fold -- only the first 1472 bytes (the real
+        // block header) determine the per-job key table, which is what lets verushash::hash()
+        // skip regenerating it on every nonce attempt (see src/crypto/verushash/verushash.cpp).
+        //
+        // Within that 15-byte field, ccminer/monkins1010's verusscan.cpp (nonceSpace[15] in
+        // scanhash_verus) splits it 7+4+4: nonceSpace[0:7] and [7:11] (11 bytes total, offset
+        // 1472..1482) are pool/job-derived (the header's old nNonce area -- extranonce1 plus a
+        // reserved word, see VerusStratumClient), and only nonceSpace[11:15] (offset 1483..1486)
+        // is the miner's free-running counter (`((uint32_t*)&nonceSpace[11])[0] = nonce_buf`).
+        // XMRig's generic per-thread nonce increment writes exactly nonceSize()==4 bytes at
+        // nonceOffset(), so this MUST be 1483 (1472 + 11), not 1472, or the hot loop would
+        // stomp on the pool-assigned prefix instead of the counter.
+        return 1472 + 11;
 
     default:
         break;

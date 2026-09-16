@@ -263,6 +263,17 @@ if (WITH_KAWPOW OR WITH_GHOSTRIDER)
 endif()
 
 
+if (WITH_VERUSHASH)
+    list(APPEND HEADERS_BASE
+        src/base/net/stratum/VerusStratumClient.h
+        )
+
+    list(APPEND SOURCES_BASE
+        src/base/net/stratum/VerusStratumClient.cpp
+        )
+endif()
+
+
 if (WITH_RANDOMX AND WITH_BENCHMARK)
     add_definitions(/DXMRIG_FEATURE_BENCHMARK)
 
