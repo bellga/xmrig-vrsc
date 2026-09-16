@@ -573,11 +573,16 @@ int64_t xmrig::VerusStratumClient::submit(const JobResult &result)
     writeHex(nonceHex, nonceBuf + m_xnonce1.size(), nonceLen);
     nonceHex[nonceLen * 2] = '\0';
 
-    // -- ntime field: big-endian hex of the job's original nTime bytes (sprintf("%08x",
-    // swab32(work->data[25])) in equi_stratum_submit -- i.e. the 4 raw bytes, reversed).
+    // -- ntime field: equi_stratum_submit does sprintf("%08x", swab32(work->data[25])).
+    // work->data[25] is those same 4 raw bytes read as a little-endian uint32 (no swap at
+    // storage time -- hex2bin() just copies them in wire order); swab32() then byte-reverses
+    // that value; and %08x prints a uint32 most-significant-byte-first. Reading a LE-interpreted
+    // value back out big-endian-first is exactly undoing the LE interpretation -- the two
+    // reversals cancel out, so the resulting hex string is identical to the original wire bytes.
+    // (A previous version of this function reversed the bytes here, which was wrong -- it
+    // produced "ntime out of range" rejections against na.luckpool.net; see git history.)
     char timeHex[9];
-    uint8_t ntimeSwapped[4] = { m_ntimeRaw[3], m_ntimeRaw[2], m_ntimeRaw[1], m_ntimeRaw[0] };
-    writeHex(timeHex, ntimeSwapped, 4);
+    writeHex(timeHex, m_ntimeRaw, 4);
     timeHex[8] = '\0';
 
     // -- solution field: 3-byte varint + 1344-byte solution, with the last 15 bytes replaced by
