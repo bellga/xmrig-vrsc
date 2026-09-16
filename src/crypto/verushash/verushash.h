@@ -37,15 +37,27 @@ namespace xmrig {
 namespace verushash {
 
 
-// Total job blob size VerusHash expects: 140-byte block header + 3-byte solution-size varint
-// (0xfd 0x40 0x05, i.e. 1344 little-endian) + 1344-byte repurposed "Equihash solution" area.
+// Legacy fixed job blob size (140-byte block header + 3-byte solution-size varint, 0xfd 0x40 0x05
+// == 1344 little-endian, + a full 1344-byte "Equihash solution" area). Real pools (na.luckpool.net
+// observed live) send a variable-length, typically much shorter solution -- see the realSize
+// derivation in VerusStratumClient.cpp's handleNotify() -- so the *actual* per-job blob size now
+// varies and hash() below accepts any size satisfying the invariant below. kInputSize is kept
+// only as the self-test's fixed reference size (CpuWorker::selfTest()) and as the upper bound
+// used to size Context::cachedPrefix.
 constexpr size_t kInputSize = 1487;
 
-// Offset of the 15-byte nonce/entropy field within that blob (== kInputSize - 15). Only the
-// first 4 bytes of it are used as XMRig's incrementing nonce counter (see Job::nonceOffset());
-// the rest keeps whatever the pool's job template put there.
-constexpr size_t kNonceOffset = kInputSize - 15;
+// VerusHashHalf folds its input in complete 32-byte chunks; whatever doesn't make a full chunk is
+// left sitting unconsumed in the result's tail and becomes the "nonce/entropy field". kInputSize
+// (and every valid per-job blob size) is constructed so that trailing remainder is always exactly
+// 15 bytes (size % 32 == 15) -- that invariant, not any single fixed size, is what hash() checks.
+// Only the last 4 bytes of that 15-byte field are XMRig's incrementing nonce counter (see
+// Job::nonceOffset(), which is size-relative: m_size - 4); the rest keeps whatever the pool's job
+// template put there. kNonceOffset/kMaxNonceOffset below are relative to kInputSize specifically
+// (used for self-test and as Context::cachedPrefix's capacity) -- callers building an actual job
+// blob must compute their own offset as (blobSize - kNonceFieldSize), not use this constant.
 constexpr size_t kNonceFieldSize = 15;
+constexpr size_t kNonceOffset = kInputSize - kNonceFieldSize;
+constexpr size_t kMaxNonceOffset = kNonceOffset; // Context::cachedPrefix capacity
 
 
 // Opaque per-thread state: the ~8.6 KB pseudorandom key table (and its restore scratch) that
@@ -57,9 +69,10 @@ struct Context;
 Context *create();
 void destroy(Context *ctx);
 
-// Computes the VerusHash 2.2 of `blob` (must be exactly kInputSize bytes) into `output` (32
-// bytes). Regenerates the per-job key table automatically when the non-nonce part of `blob`
-// differs from the last call on this same `ctx`.
+// Computes the VerusHash 2.2 of `blob` (`size` bytes -- must satisfy size % 32 == 15, per the
+// folding invariant above, and size <= kInputSize) into `output` (32 bytes). Regenerates the
+// per-job key table automatically when the non-nonce prefix (the first size - kNonceFieldSize
+// bytes) differs in length or content from the last call on this same `ctx`.
 void hash(const uint8_t *blob, size_t size, uint8_t *output, Context *ctx);
 
 

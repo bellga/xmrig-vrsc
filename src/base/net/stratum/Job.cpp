@@ -69,12 +69,26 @@ bool xmrig::Job::setBlob(const char *blob)
 
     size /= 2;
 
+    if (size >= sizeof(m_blob)) {
+        return false;
+    }
+
+    // VERUSHASH's nonceOffset() is size-relative (m_size - 4, see below), so m_size must already
+    // reflect the size being validated before nonceOffset() is called for the minSize check --
+    // unlike every other algorithm here, whose nonceOffset() is a fixed constant. Set it first;
+    // on any failure below we return false, which is treated as a fatal parse error by callers
+    // (the job is discarded, not mined), so a transiently-wrong m_size here is harmless.
+    const size_t previousSize = m_size;
+    m_size = size;
+
     const size_t minSize = nonceOffset() + nonceSize();
-    if (size < minSize || size >= sizeof(m_blob)) {
+    if (size < minSize) {
+        m_size = previousSize;
         return false;
     }
 
     if (!Cvt::fromHex(m_blob, sizeof(m_blob), blob, size * 2)) {
+        m_size = previousSize;
         return false;
     }
 
@@ -87,7 +101,6 @@ bool xmrig::Job::setBlob(const char *blob)
     memcpy(m_rawBlob, blob, size * 2);
 #   endif
 
-    m_size = size;
     return true;
 }
 
@@ -162,22 +175,28 @@ size_t xmrig::Job::nonceOffset() const
         return 76;
 
     case Algorithm::VERUSHASH:
-        // MoneroOcean: the 1487-byte blob's last 15 bytes (offset 1472 = 1487 - 15) are the
-        // repurposed Equihash-solution nonce/entropy space (our verushash::kNonceOffset).
-        // VerusHashHalf folds input in complete 32-byte chunks and 1487 % 32 == 15, so those
-        // trailing 15 bytes never feed into that fold -- only the first 1472 bytes (the real
-        // block header) determine the per-job key table, which is what lets verushash::hash()
-        // skip regenerating it on every nonce attempt (see src/crypto/verushash/verushash.cpp).
+        // The blob's last 15 bytes are the repurposed Equihash-solution nonce/entropy space
+        // (verushash::kNonceFieldSize): VerusHashHalf folds input in complete 32-byte chunks, and
+        // every valid per-job blob size satisfies size % 32 == 15 (VerusStratumClient builds it
+        // that way -- see its handleNotify()), so those trailing 15 bytes never feed into that
+        // fold; only the leading size-15 bytes (the real block header + solution) determine the
+        // per-job key table, which is what lets verushash::hash() skip regenerating it on every
+        // nonce attempt (src/crypto/verushash/verushash.cpp).
         //
-        // Within that 15-byte field, ccminer/monkins1010's verusscan.cpp (nonceSpace[15] in
-        // scanhash_verus) splits it 7+4+4: nonceSpace[0:7] and [7:11] (11 bytes total, offset
-        // 1472..1482) are pool/job-derived (the header's old nNonce area -- extranonce1 plus a
-        // reserved word, see VerusStratumClient), and only nonceSpace[11:15] (offset 1483..1486)
-        // is the miner's free-running counter (`((uint32_t*)&nonceSpace[11])[0] = nonce_buf`).
-        // XMRig's generic per-thread nonce increment writes exactly nonceSize()==4 bytes at
-        // nonceOffset(), so this MUST be 1483 (1472 + 11), not 1472, or the hot loop would
-        // stomp on the pool-assigned prefix instead of the counter.
-        return 1472 + 11;
+        // Blob size now varies per job (real pools send a variable-length solution -- see
+        // VerusStratumClient.cpp), so this can no longer be a fixed constant. Within that 15-byte
+        // field, ccminer/monkins1010's verusscan.cpp (nonceSpace[15] in scanhash_verus) splits it
+        // 7+4+4: nonceSpace[0:7] and [7:11] (11 bytes total, the first 11 of the 15) are
+        // pool/job-derived (the header's old nNonce area -- extranonce1 plus a reserved word, see
+        // VerusStratumClient), and only nonceSpace[11:15] (the LAST 4 bytes of the blob) is the
+        // miner's free-running counter (`((uint32_t*)&nonceSpace[11])[0] = nonce_buf`). XMRig's
+        // generic per-thread nonce increment writes exactly nonceSize()==4 bytes at nonceOffset(),
+        // so this MUST be m_size - 4 (the last 4 bytes), not m_size - 15, or the hot loop would
+        // stomp on the pool-assigned prefix instead of the counter. (m_size is guaranteed set
+        // before this is reached during setBlob()'s own validation -- see its ordering fix above
+        // -- but guard against underflow anyway in case nonceOffset()/nonce() is ever called on a
+        // still-default-constructed/reset Job, where m_size == 0.)
+        return m_size >= 4 ? m_size - 4 : 0;
 
     default:
         break;
