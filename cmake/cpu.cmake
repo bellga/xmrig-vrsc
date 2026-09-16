@@ -182,10 +182,22 @@ if (ARM_TARGET AND ARM_TARGET GREATER 6)
         CHECK_CXX_COMPILER_FLAG(-march=armv8-a+crypto XMRIG_ARM_CRYPTO)
 
         if (XMRIG_ARM_CRYPTO)
-            add_definitions(-DXMRIG_ARM_CRYPTO)
             set(ARM8_CXX_FLAGS "-march=armv8-a+crypto")
         else()
             set(ARM8_CXX_FLAGS "-march=armv8-a")
+        endif()
+
+        # Opt-in per-core tuning (-DARM_CPU=<code>, see cmake/arm-cpu-tiers.cmake) on top of the
+        # generic -march=armv8-a[+crypto] baseline computed above. Only takes effect if the
+        # installed compiler actually recognizes that specific core; otherwise this is a no-op
+        # and the generic ARM8_CXX_FLAGS/XMRIG_ARM_CRYPTO from above stand.
+        if (ARM_CPU)
+            include(${CMAKE_SOURCE_DIR}/cmake/arm-cpu-tiers.cmake)
+            xmrig_resolve_arm_cpu("${ARM_CPU}" ARM8_CXX_FLAGS XMRIG_ARM_CRYPTO)
+        endif()
+
+        if (XMRIG_ARM_CRYPTO)
+            add_definitions(-DXMRIG_ARM_CRYPTO)
         endif()
     endif()
 endif()

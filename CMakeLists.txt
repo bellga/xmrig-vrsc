@@ -41,6 +41,7 @@ option(WITH_DMI             "Enable DMI/SMBIOS reader" ON)
 option(BUILD_STATIC         "Build static binary" OFF)
 option(ARM_V8               "Force ARMv8 (64 bit) architecture, use with caution if automatic detection fails, but you sure it may work" OFF)
 option(ARM_V7               "Force ARMv7 (32 bit) architecture, use with caution if automatic detection fails, but you sure it may work" OFF)
+set(ARM_CPU "" CACHE STRING "Tune the ARM64 build for one specific CPU core instead of the generic ARMv8-A baseline, e.g. -DARM_CPU=cortex-a76 or -DARM_CPU=ca76 (short codes: see cmake/arm-cpu-tiers.cmake). Unrecognized values fall back to the generic build with a warning, never a build failure.")
 option(HWLOC_DEBUG          "Enable hwloc debug helpers and log" OFF)
 
 
