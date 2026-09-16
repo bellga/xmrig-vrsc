@@ -19,7 +19,6 @@
 #include <cstdio>
 #include <cstring>
 #include <stdexcept>
-#include <vector>
 
 #include "base/net/stratum/VerusStratumClient.h"
 #include "3rdparty/rapidjson/document.h"
@@ -49,10 +48,8 @@ constexpr size_t kNNonceOff       = 108; // 32 bytes, words 27..34 (EQNONCE_OFFS
 constexpr size_t kNNonceSize      = 32;
 constexpr size_t kEqNonceWordOff  = 120 - kNNonceOff; // word 30, relative to kNNonceOff == 12
 
-// Upper bound on the real (reconstructed, un-truncated) on-chain solution size we'll accept --
-// matches the legacy fixed solution size, which is also VerusCoin's SOLUTION_SIZE constant for
-// the pre-PBaaS format, so it's a safe ceiling for any realistic modern PBaaS solution too.
-constexpr size_t kMaxSolutionSize = 1344;
+constexpr size_t kSolutionSize    = 1344;
+constexpr uint8_t kSolutionVarint[3] = { 0xfd, 0x40, 0x05 }; // CompactSize(1344), little-endian
 
 
 inline void writeHex(char *dst, const uint8_t *src, size_t len)
@@ -62,86 +59,6 @@ inline void writeHex(char *dst, const uint8_t *src, size_t len)
         dst[i * 2]     = hexChars[src[i] >> 4];
         dst[i * 2 + 1] = hexChars[src[i] & 0x0F];
     }
-}
-
-
-// CompactSize ("varint") width for a given size, per serialize.h's WriteCompactSize/
-// GetSizeOfCompactSize (Bitcoin/VerusCoin's standard encoding): 1 byte for <253, 3 for <=0xFFFF,
-// 5 for <=0xFFFFFFFF, 9 otherwise. Only the first two cases are reachable here given
-// kMaxSolutionSize, but the full table costs nothing and documents the real rule.
-inline size_t compactSizeWidth(uint64_t size)
-{
-    if (size < 253) return 1;
-    if (size <= 0xFFFFu) return 3;
-    if (size <= 0xFFFFFFFFu) return 5;
-    return 9;
-}
-
-
-inline void writeCompactSize(uint8_t *dst, uint64_t size, size_t width)
-{
-    switch (width) {
-    case 1:
-        dst[0] = static_cast<uint8_t>(size);
-        break;
-    case 3:
-        dst[0] = 0xfd;
-        dst[1] = static_cast<uint8_t>(size & 0xff);
-        dst[2] = static_cast<uint8_t>((size >> 8) & 0xff);
-        break;
-    case 5:
-        dst[0] = 0xfe;
-        dst[1] = static_cast<uint8_t>(size & 0xff);
-        dst[2] = static_cast<uint8_t>((size >> 8) & 0xff);
-        dst[3] = static_cast<uint8_t>((size >> 16) & 0xff);
-        dst[4] = static_cast<uint8_t>((size >> 24) & 0xff);
-        break;
-    default:
-        break; // 9-byte width unreachable given kMaxSolutionSize; left unimplemented on purpose.
-    }
-}
-
-
-// Recovers the true, un-truncated on-chain solution size from the (possibly trailing-zero-
-// truncated) length the pool actually sent over the wire.
-//
-// Background (see claude/porte-verushash-spec.md for the full derivation): VerusCoin's real
-// nSolution is a variable-length PBaaS structure (CVerusSolutionVector, primitives/solutiondata.h)
-// whose required total size satisfies, from CVerusSolutionVector::GetRequiredSolutionSize()'s own
-// logic, the invariant (realSize + headerBase) % 32 == 15, where headerBase is the 140-byte block
-// header plus the CompactSize prefix width for realSize itself (140 + compactSizeWidth(realSize)).
-// That's exactly the property VerusHashHalf's 32-byte folding depends on (see verushash.cpp) --
-// it's what leaves a clean, always-exactly-15-byte unconsumed "nonce field" tail regardless of
-// solution size, which is what the per-job key-table caching optimization requires.
-//
-// Working that invariant out by CompactSize width:
-//   width=1 (realSize < 253):  (realSize + 141) % 32 == 15  ->  realSize % 32 == 2
-//   width=3 (realSize >= 253): (realSize + 143) % 32 == 15  ->  realSize % 32 == 0
-//
-// na.luckpool.net (live, this fork's only tested pool so far) sends a solution hex string shorter
-// than the real solution -- consistent with a stratum shim trimming the solution's trailing zero
-// bytes before hex-encoding, to save bandwidth. So `receivedLen` here is a lower bound on the true
-// realSize, and we recover the smallest realSize >= receivedLen satisfying one of the two branches
-// above (preferring width=1 when both are possible, since it's always the smaller reconstruction).
-// Verified against two real observed (receivedLen -> realSize) pairs from na.luckpool.net:
-// 229 -> 256 (width=3 branch; 258 would satisfy width=1's residue but violates realSize<253) and
-// 177 -> 194 (width=1 branch, and smaller than width=3's 256).
-inline size_t recoverRealSolutionSize(size_t receivedLen)
-{
-    // Smallest realSize1 >= receivedLen with realSize1 % 32 == 2, only valid if also < 253.
-    size_t realSize1 = receivedLen + ((2 + 32 - (receivedLen % 32)) % 32);
-    const bool width1Valid = realSize1 < 253;
-
-    // Smallest realSize3 >= receivedLen with realSize3 % 32 == 0 and >= 253.
-    size_t realSize3 = receivedLen + ((32 - (receivedLen % 32)) % 32);
-    while (realSize3 < 253) {
-        realSize3 += 32;
-    }
-
-    if (width1Valid && realSize1 <= realSize3) {
-        return realSize1;
-    }
-    return realSize3;
 }
 
 
@@ -410,35 +327,23 @@ bool xmrig::VerusStratumClient::handleNotify(const rapidjson::Value &params)
         return false;
     }
 
-    // NOTE (live-pool finding, na.luckpool.net): unlike ccminer's reference, which always expects
-    // a full, fixed-size solution, real-world notifications observed here carry a much shorter
-    // hex string (e.g. 229 or 177 bytes, varying per job). VerusCoin's actual on-wire solution
-    // (see VerusCoin/VerusCoin's primitives/solutiondata.h, CVerusSolutionVector) is a structured,
-    // variable-length PBaaS blob (descriptor + optional merge-mining headers + extra data) whose
-    // TRUE required size must satisfy (realSize + 140 + compactSizeWidth(realSize)) % 32 == 15 --
-    // a property VerusHashHalf's 32-byte folding depends on. The received length here is
-    // consistent with a pool-side stratum shim trimming the solution's trailing zero bytes before
-    // hex-encoding to save bandwidth, so it's a lower bound on the true realSize, not realSize
-    // itself -- recoverRealSolutionSize() (above) reconstructs the true size the same way the
-    // pool's own validation logic does, given only that lower bound. An earlier version of this
-    // function just zero-padded to a *fixed* 1344-byte/3-byte-varint solution, which built a
-    // different total blob than the pool re-derives and hashes independently -- confirmed (via
-    // live testing) to be the direct cause of a 100% "low difficulty share" rejection rate; see
-    // claude/porte-verushash-spec.md.
+    // NOTE (live-pool finding, na.luckpool.net): unlike ccminer's reference, which always
+    // expects a full 1344-byte solution, real-world notifications observed here carry a much
+    // shorter hex string (e.g. 229 or 177 bytes, varying per job). VerusCoin's actual on-wire
+    // solution (see VerusCoin/VerusCoin's primitives/solutiondata.h, CVerusSolutionVector) is a
+    // structured, variable-length PBaaS blob (descriptor + optional merge-mining headers +
+    // extra data), most of whose trailing bytes are typically zero on a plain (non-PBaaS,
+    // non-merge-mined) chain tip -- consistent with a pool-side stratum shim trimming trailing
+    // zero bytes before hex-encoding to save bandwidth, same idea as trailing-zero RLE that
+    // VerusCoin's own CCompactSolutionVector does for storage. We treat whatever's given as a
+    // left-aligned prefix of the full 1344-byte solution and zero-pad the rest, which is exactly
+    // what re-serializing "solution + zeros" produces if that hypothesis is right. This is
+    // unverified until we see whether shares built this way are accepted by the pool.
     const size_t solutionHexLen = strlen(vSolution.GetString());
-    if (solutionHexLen == 0 || solutionHexLen > kMaxSolutionSize * 2 || (solutionHexLen & 1)) {
-        LOG_ERR("%s " RED("mining.notify: unexpected solution length %zu (want 1..%zu, even)"), tag(), solutionHexLen, kMaxSolutionSize * 2);
+    if (solutionHexLen == 0 || solutionHexLen > kSolutionSize * 2 || (solutionHexLen & 1)) {
+        LOG_ERR("%s " RED("mining.notify: unexpected solution length %zu (want 1..%zu, even)"), tag(), solutionHexLen, kSolutionSize * 2);
         return false;
     }
-
-    const size_t receivedLen = solutionHexLen / 2;
-    const size_t realSize    = recoverRealSolutionSize(receivedLen);
-    if (realSize > kMaxSolutionSize) {
-        LOG_ERR("%s " RED("mining.notify: reconstructed solution size %zu exceeds cap %zu"), tag(), realSize, kMaxSolutionSize);
-        return false;
-    }
-
-    const size_t varintWidth = compactSizeWidth(realSize);
 
     if (m_xnonce1.empty()) {
         LOG_ERR("%s " RED("mining.notify received before extranonce1 was set"), tag());
@@ -462,15 +367,14 @@ bool xmrig::VerusStratumClient::handleNotify(const rapidjson::Value &params)
     memcpy(header + kNNonceOff, m_xnonce1.data(), m_xnonce1.size());
     // remaining bytes already zero-initialized above.
 
-    // Zero-initialized up to the reconstructed realSize (Buffer == std::vector<uint8_t>); we only
-    // decode into the prefix the pool actually sent, per the note above.
-    Buffer solution(realSize, 0);
-    if (!Cvt::fromHex(solution.data(), receivedLen, vSolution.GetString(), solutionHexLen)) {
+    // Zero-initialized (Buffer == std::vector<uint8_t>); we only decode into the prefix the
+    // pool actually sent, per the note above.
+    Buffer solution(kSolutionSize, 0);
+    if (!Cvt::fromHex(solution.data(), solutionHexLen / 2, vSolution.GetString(), solutionHexLen)) {
         return false;
     }
 
-    LOG_INFO("%s verus solution: pool sent %zu bytes, reconstructed %zu bytes (%zu-byte varint, job %s)",
-              tag(), receivedLen, realSize, varintWidth, vJobId.GetString());
+    LOG_INFO("%s verus solution: pool sent %zu of %zu bytes (job %s)", tag(), solutionHexLen / 2, kSolutionSize, vJobId.GetString());
 
     // solution[0] is a VerusHash "extended solution" format version byte (not the block header's
     // own nVersion field), and solution[5] gates whether this job uses the extended layout --
@@ -481,7 +385,7 @@ bool xmrig::VerusStratumClient::handleNotify(const rapidjson::Value &params)
     // CPBaaSSolutionDescriptor(vch) constructor does (primitives/solutiondata.h), so we can see
     // the real version/descrBits/numPBaaSHeaders/extraDataSize this pool is sending instead of
     // guessing from length alone. Remove once submissions are confirmed accepted.
-    if (solution.size() >= 8) {
+    {
         const uint32_t descrVersion = solution[0] | (solution[1] << 8) | (solution[2] << 16) | (static_cast<uint32_t>(solution[3]) << 24);
         const uint8_t  descrBits    = solution[4];
         const uint8_t  numPBaaS     = solution[5];
@@ -493,22 +397,10 @@ bool xmrig::VerusStratumClient::handleNotify(const rapidjson::Value &params)
 
     uint8_t nonceSpacePrefix[11] = { 0 };
 
-    // Dynamic blob size now: 140-byte header + varintWidth-byte CompactSize(realSize) + realSize
-    // bytes of (reconstructed, zero-padded) solution + 15-byte nonce/entropy tail. By construction
-    // (140 + varintWidth + realSize) % 32 == 15 -- see recoverRealSolutionSize()'s derivation --
-    // so this always lands on a size verushash::hash() accepts.
-    const size_t blobSize = kHeaderSize + varintWidth + realSize;
-    if (blobSize > verushash::kInputSize) {
-        LOG_ERR("%s " RED("mining.notify: reconstructed blob size %zu exceeds cap %zu"), tag(), blobSize, verushash::kInputSize);
-        return false;
-    }
-
-    Buffer blob(blobSize, 0);
-    memcpy(blob.data(), header, kHeaderSize);
-    writeCompactSize(blob.data() + kHeaderSize, realSize, varintWidth);
-    memcpy(blob.data() + kHeaderSize + varintWidth, solution.data(), solution.size());
-
-    const size_t solutionOff = kHeaderSize + varintWidth;
+    uint8_t blob[verushash::kInputSize] = { 0 };
+    memcpy(blob, header, kHeaderSize);
+    memcpy(blob + kHeaderSize, kSolutionVarint, sizeof(kSolutionVarint));
+    memcpy(blob + kHeaderSize + sizeof(kSolutionVarint), solution.data(), solution.size());
 
     if (extended) {
         // Capture the pool-assigned nNonce bytes that verusscan.cpp relocates into the blob's
@@ -516,22 +408,19 @@ bool xmrig::VerusStratumClient::handleNotify(const rapidjson::Value &params)
         memcpy(nonceSpacePrefix,     header + kNNonceOff,     7); // pdata[EQNONCE_OFFSET-3..], 7B
         memcpy(nonceSpacePrefix + 7, header + kNNonceOff + 20, 4); // pdata[EQNONCE_OFFSET+2], word 32
 
-        memset(blob.data() + kPrevHashOff, 0, 32 + 32 + 32);   // hashPrevBlock, hashMerkleRoot, hashFinalSaplingRoot
-        memset(blob.data() + kNBitsOff,    0, 4);              // nBits
-        memset(blob.data() + kNNonceOff,  0, kNNonceSize);      // nNonce
-        if (solution.size() >= 72) {
-            memset(blob.data() + solutionOff + 8, 0, 64); // solution[8:72)
-        }
+        memset(blob + kPrevHashOff, 0, 32 + 32 + 32);   // hashPrevBlock, hashMerkleRoot, hashFinalSaplingRoot
+        memset(blob + kNBitsOff,    0, 4);              // nBits
+        memset(blob + kNNonceOff,  0, kNNonceSize);      // nNonce
+        memset(blob + kHeaderSize + sizeof(kSolutionVarint) + 8, 0, 64); // solution[8:72]
     }
 
-    // Last 15 bytes of the blob (the nonce/entropy field, per verushash.h's fold invariant):
-    // first 11 are the pool/job-derived prefix, last 4 are left zero here for XMRig's per-thread
-    // nonce loop to fill in on each attempt (Job::nonceOffset() == blobSize - 4).
-    memcpy(blob.data() + blobSize - verushash::kNonceFieldSize, nonceSpacePrefix, sizeof(nonceSpacePrefix));
+    memcpy(blob + verushash::kNonceOffset, nonceSpacePrefix, sizeof(nonceSpacePrefix));
+    // blob[1483..1487) (the free-running local nonce) is left zero here; XMRig's per-thread
+    // nonce loop overwrites exactly those 4 bytes on every attempt (Job::nonceOffset()==1483).
 
-    std::vector<char> blobHex(blobSize * 2 + 1);
-    writeHex(blobHex.data(), blob.data(), blob.size());
-    blobHex[blobHex.size() - 1] = '\0';
+    char blobHex[verushash::kInputSize * 2 + 1];
+    writeHex(blobHex, blob, sizeof(blob));
+    blobHex[sizeof(blobHex) - 1] = '\0';
 
     Job job;
     job.setId(vJobId.GetString());
@@ -539,7 +428,7 @@ bool xmrig::VerusStratumClient::handleNotify(const rapidjson::Value &params)
     job.setHeight(m_height);
     job.setDiff(m_nextDiff > 0.0 ? static_cast<uint64_t>(std::ceil(m_nextDiff)) : 1);
 
-    if (!job.setBlob(blobHex.data())) {
+    if (!job.setBlob(blobHex)) {
         LOG_ERR("%s " RED("failed to build VerusHash job blob"), tag());
         return false;
     }
@@ -711,36 +600,25 @@ int64_t xmrig::VerusStratumClient::submit(const JobResult &result)
     writeHex(timeHex, m_ntimeRaw, 4);
     timeHex[8] = '\0';
 
-    // -- solution field: CompactSize(realSize) varint + the reconstructed realSize-byte solution
-    // (m_solution, stashed by handleNotify() -- see recoverRealSolutionSize()/kMaxSolutionSize
-    // there for how realSize was derived from what the pool actually sent), with the solution's
-    // last 15 bytes replaced by the same nonce-tail bytes the accepted hash actually used
-    // (nonceSpacePrefix + the local nonce) -- this must exactly mirror handleNotify()'s blob
-    // construction, where the blob's last 15 bytes (== the solution's last 15 bytes, since realSize
-    // >= 15 in every case observed so far) get that same overwrite. NOTE: equi_stratum_submit()
-    // also zeroes solution[8:72] and then immediately restores the original bytes there before
-    // sending -- a documented no-op once you track it through (see VerusStratumClient.cpp git
-    // history / porte-verushash-spec.md), so we just leave the original solution bytes at [8:72]
-    // untouched here instead of round-tripping them.
-    const size_t solutionSize = m_solution.size();
-    if (solutionSize < verushash::kNonceFieldSize) {
+    // -- solution field: 3-byte varint + 1344-byte solution, with the last 15 bytes replaced by
+    // the same nonce-tail bytes the accepted hash actually used (nonceSpacePrefix + the local
+    // nonce). NOTE: equi_stratum_submit() also zeroes solution[8:72] and then immediately
+    // restores the original bytes there before sending -- a documented no-op once you track it
+    // through (see VerusStratumClient.cpp git history / porte-verushash-spec.md), so we just
+    // leave the original solution bytes at [8:72] untouched here instead of round-tripping them.
+    Buffer submitSolution = m_solution;
+    if (submitSolution.size() != kSolutionSize) {
         return -1;
     }
 
-    Buffer submitSolution = m_solution;
-
-    memcpy(submitSolution.data() + (solutionSize - verushash::kNonceFieldSize),
+    memcpy(submitSolution.data() + (kSolutionSize - verushash::kNonceFieldSize),
            m_nonceSpacePrefix, sizeof(m_nonceSpacePrefix));
-    memcpy(submitSolution.data() + (solutionSize - 4), &localNonce, 4);
+    memcpy(submitSolution.data() + (kSolutionSize - 4), &localNonce, 4);
 
-    const size_t varintWidth = compactSizeWidth(solutionSize);
-    uint8_t solutionVarint[9] = { 0 };
-    writeCompactSize(solutionVarint, solutionSize, varintWidth);
-
-    std::vector<char> solHex(varintWidth * 2 + solutionSize * 2 + 1);
-    writeHex(solHex.data(), solutionVarint, varintWidth);
-    writeHex(solHex.data() + varintWidth * 2, submitSolution.data(), submitSolution.size());
-    solHex[solHex.size() - 1] = '\0';
+    char solHex[3 * 2 + kSolutionSize * 2 + 1];
+    writeHex(solHex, kSolutionVarint, 3);
+    writeHex(solHex + 6, submitSolution.data(), submitSolution.size());
+    solHex[sizeof(solHex) - 1] = '\0';
 
     using namespace rapidjson;
 
@@ -752,7 +630,7 @@ int64_t xmrig::VerusStratumClient::submit(const JobResult &result)
     params.PushBack(Value(m_jobId.data(), allocator), allocator);
     params.PushBack(Value(timeHex, allocator), allocator);
     params.PushBack(Value(nonceHex, allocator), allocator);
-    params.PushBack(Value(solHex.data(), allocator), allocator);
+    params.PushBack(Value(solHex, allocator), allocator);
 
     JsonRequest::create(doc, m_sequence, "mining.submit", params);
 

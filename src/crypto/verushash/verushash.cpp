@@ -163,14 +163,9 @@ struct Context
     // register directly (the per-nonce __m128i work happens on the stack-local `curBuf` in
     // hash() below, which the compiler aligns itself). Using alignas(32) here would require
     // matching overaligned heap allocation for `Context`, which plain `new` does not guarantee.
-    alignas(16) uint8_t blockhash_half[64]  = { 0 };
-    // Last-seen fixed (non-nonce) part of the blob. Sized to the largest offset any valid blob
-    // can use (kMaxNonceOffset, == kInputSize - 15); real per-job prefixes are usually much
-    // shorter now that blob size varies per job (see kInputSize's comment), so jobChanged below
-    // tracks and compares the actual length too, not just kMaxNonceOffset bytes of content.
-    uint8_t cachedPrefix[kMaxNonceOffset]   = { 0 };
-    size_t  cachedPrefixLen                 = 0;
-    bool    havePrefix                      = false;
+    alignas(16) uint8_t blockhash_half[64] = { 0 };
+    uint8_t cachedPrefix[kNonceOffset]     = { 0 }; // last-seen fixed (non-nonce) part of the blob
+    bool    havePrefix                     = false;
 
     uint32_t fixrand[32]   = { 0 };
     uint32_t fixrandex[32] = { 0 };
@@ -204,25 +199,18 @@ void destroy(Context *ctx)
 
 void hash(const uint8_t *blob, size_t size, uint8_t *output, Context *ctx)
 {
-    // Any size satisfying the fold invariant is valid now (see kNonceFieldSize's comment in the
-    // header) -- not just the legacy fixed kInputSize. size <= kInputSize keeps the prefix within
-    // cachedPrefix's capacity (kMaxNonceOffset == kInputSize - 15).
-    if (size < kNonceFieldSize || size > kInputSize || (size % 32) != kNonceFieldSize) {
+    if (size != kInputSize) {
         memset(output, 0, 32);
         return;
     }
 
-    const size_t nonceOffset = size - kNonceFieldSize;
-
-    const bool jobChanged = !ctx->havePrefix || ctx->cachedPrefixLen != nonceOffset ||
-                             memcmp(ctx->cachedPrefix, blob, nonceOffset) != 0;
+    const bool jobChanged = !ctx->havePrefix || memcmp(ctx->cachedPrefix, blob, kNonceOffset) != 0;
 
     if (jobChanged) {
-        verusHashHalf(ctx->blockhash_half, blob, static_cast<int>(size));
+        verusHashHalf(ctx->blockhash_half, blob, static_cast<int>(kInputSize));
         genNewClKey(ctx->blockhash_half, ctx->data_key);
 
-        memcpy(ctx->cachedPrefix, blob, nonceOffset);
-        ctx->cachedPrefixLen = nonceOffset;
+        memcpy(ctx->cachedPrefix, blob, kNonceOffset);
         ctx->havePrefix = true;
     }
 
@@ -238,7 +226,7 @@ void hash(const uint8_t *blob, size_t size, uint8_t *output, Context *ctx)
     _mm_store_si128(reinterpret_cast<u128 *>(&curBuf[32 + 16]), fill1);
     curBuf[32 + 15] = ch;
 
-    memcpy(curBuf + 32, blob + nonceOffset, kNonceFieldSize);
+    memcpy(curBuf + 32, blob + kNonceOffset, kNonceFieldSize);
 
     uint64_t intermediate = verusclhashv2_2(ctx->data_key, curBuf, 511, ctx->fixrand, ctx->fixrandex, ctx->data_key_prand, ctx->data_key_prandex);
 
