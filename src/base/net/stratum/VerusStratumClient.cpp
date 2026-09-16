@@ -426,7 +426,21 @@ bool xmrig::VerusStratumClient::handleNotify(const rapidjson::Value &params)
     job.setId(vJobId.GetString());
     job.setAlgorithm(m_pool.algorithm());
     job.setHeight(m_height);
-    job.setDiff(m_nextDiff > 0.0 ? static_cast<uint64_t>(std::ceil(m_nextDiff)) : 1);
+
+    // Prefer the pool's real 256-bit target (mining.set_target), applied directly via
+    // Job::setTarget() -- see handleSetTarget()'s comment for why this avoids a scale mismatch
+    // that job.setDiff()'s diff-based round trip had. Only fall back to the diff-based path if
+    // this pool never sends mining.set_target at all (mining.set_difficulty only).
+    if (m_haveNextTarget) {
+        job.setTarget(m_nextTargetHex);
+        // DIAGNOSTIC (temporary): confirm the local target actually being used for the share
+        // check, to compare against the diff-based m_target this replaces. Remove once diff
+        // scaling is confirmed correct by acceptance rate.
+        LOG_INFO("%s verus job target: hex=%s -> local target=%llu", tag(), m_nextTargetHex,
+                  static_cast<unsigned long long>(job.target()));
+    } else {
+        job.setDiff(m_nextDiff > 0.0 ? static_cast<uint64_t>(std::ceil(m_nextDiff)) : 1);
+    }
 
     if (!job.setBlob(blobHex)) {
         LOG_ERR("%s " RED("failed to build VerusHash job blob"), tag());
@@ -486,13 +500,25 @@ bool xmrig::VerusStratumClient::handleSetTarget(const rapidjson::Value &params)
         return false;
     }
 
-    // Port of equi_stratum_set_target()/target_to_diff_verus(): reduce the 32-byte target to a
-    // compact (exponent, 24-bit significand) "nBits"-style value, then the same log2-based
-    // formula VerusCoin's own miners use for a display difficulty. NOTE: this produces a
-    // VerusCoin-scale "network difficulty" number, not necessarily the same scale XMRig's
-    // Job::setDiff()/toDiff() expects (that pairing is the #1 thing left to confirm against a
-    // live na.luckpool.net session -- see claude/porte-verushash-spec.md). If this pool instead
-    // sends mining.set_difficulty, handleSetDifficulty() below is used and this path is unused.
+    // targetBin as received (hex-decoded left to right) is the usual Bitcoin/Zcash-family display
+    // convention: index 0 is the MOST significant byte (uint256::GetHex() prints its internal
+    // little-endian byte[31] first). CpuWorker's local share check, however, reads the hash the
+    // opposite way -- `*reinterpret_cast<uint64_t*>(hash + 24)`, i.e. hash[31] is the most
+    // significant byte of that 64-bit read (native/LE interpretation, matching every other
+    // algorithm's hash output convention in this fork). So to compare like with like, the target
+    // needs the SAME byte order as the hash: byte-reverse targetBin into targetBe (index 31 = most
+    // significant), then take targetBe's top 8 bytes (offset 24) directly as the local 64-bit
+    // target -- see m_nextTargetHex below, applied in handleNotify() via Job::setTarget().
+    //
+    // (Previously this function only derived a VerusCoin-scale "network difficulty" number from
+    // the target -- via target_to_diff_verus()'s compact-exponent math below, still used for the
+    // diff NUMBER shown per share -- and Job::setDiff() converted that back into a 64-bit target
+    // using XMRig's Monero-style `target = 2^64 / diff` formula. Confirmed live against
+    // na.luckpool.net: that round trip produced a target far too loose for VerusHash's real
+    // 256-bit target space -- most locally-"found" shares were rejected "low difficulty share" by
+    // the pool, with only a handful (matching a target roughly an order of magnitude too large)
+    // slipping through by chance. Using the pool's real target's top 8 bytes directly, with no
+    // diff-based round trip, avoids that scale mismatch entirely.)
     uint8_t targetBe[32] = { 0 };
     uint8_t *bitsStart = nullptr;
     int filled = 0;
@@ -506,6 +532,10 @@ bool xmrig::VerusStratumClient::handleSetTarget(const rapidjson::Value &params)
             }
         }
     }
+
+    writeHex(m_nextTargetHex, targetBe + 24, 8);
+    m_nextTargetHex[16] = '\0';
+    m_haveNextTarget = true;
 
     if (!bitsStart) {
         m_nextDiff = 0.0;

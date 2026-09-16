@@ -93,8 +93,20 @@ private:
     uint64_t m_height = 0;
 
     // target_to_diff_verus()-style diff, when the pool used mining.set_target instead of
-    // mining.set_difficulty (see handleSetTarget()).
+    // mining.set_difficulty (see handleSetTarget()). Used only for the diff NUMBER shown/sent
+    // with a share (Job::setDiff()'s m_diff) and as a fallback if mining.set_target is never
+    // seen (pool uses mining.set_difficulty instead) -- it must NOT be used to derive the local
+    // share-acceptance target: see m_nextTargetHex below and handleSetTarget()'s comment for why.
     double m_nextDiff = 0.0;
+
+    // Raw top-8-bytes-of-256-bit-target hex (16 hex chars), set directly from the pool's
+    // mining.set_target payload -- see handleSetTarget()'s comment for the derivation. When set,
+    // handleNotify() applies this directly via Job::setTarget() instead of round-tripping through
+    // Job::setDiff()'s Monero-style (2^64/diff) formula, which produced a target far too loose
+    // for VerusHash's actual 256-bit target space (confirmed live: with the diff-based target,
+    // only a small fraction of locally-"found" shares were actually accepted by the pool).
+    char m_nextTargetHex[17] = { 0 };
+    bool m_haveNextTarget    = false;
 };
 
 
