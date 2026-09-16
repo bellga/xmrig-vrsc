@@ -432,7 +432,16 @@ std::vector<xmrig::Algorithm> xmrig::Algorithm::all(const std::function<bool(con
         KAWPOW_RVN,
         GHOSTRIDER_RTM,
         // MoneroOcean: expose Flex/KCN in API/config ordering.
-        FLEX_KCN
+        FLEX_KCN,
+        // End MoneroOcean
+        // MoneroOcean: VERUSHASH_2_2 is registered in kAlgorithmNames (Algorithm(id) construction,
+        // name lookup, aliases) but was missing here. Algorithm::all() -- via this `order` list --
+        // is what Miner::rebuild() uses to populate the "known/enabled algorithms" set that
+        // Miner::isEnabled()/Network::onVerifyAlgorithm() check against; being absent here meant
+        // isEnabled(VERUSHASH_2_2) was unconditionally false regardless of pool/CPU config, which
+        // is what produced "incompatible/disabled algorithm" on every VerusStratumClient job
+        // (confirmed live against na.luckpool.net -- see VerusStratumClient.cpp/porte-verushash-spec.md).
+        VERUSHASH_2_2
         // End MoneroOcean
     };
 
