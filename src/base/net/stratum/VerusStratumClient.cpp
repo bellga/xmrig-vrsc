@@ -527,6 +527,14 @@ bool xmrig::VerusStratumClient::handleSetTarget(const rapidjson::Value &params)
     const double significand = static_cast<double>(targetBits & 0xFFFFFFu);
     m_nextDiff = significand > 0.0 ? std::ldexp(0x0f0f0f / significand, static_cast<int>(exponentDiff)) : 0.0;
 
+    // DIAGNOSTIC (temporary): most shares are being rejected "low difficulty share" even though
+    // a handful ARE accepted -- consistent with the local target (Job::setDiff() -> 64-bit
+    // Monero-style m_target) being systematically looser than what the pool actually enforces,
+    // rather than a data/hash-content bug. This log settles whether the pool even uses
+    // mining.set_target at all (vs. mining.set_difficulty below) and shows the raw value so the
+    // conversion above can be checked against it. Remove once diff scaling is confirmed correct.
+    LOG_INFO("%s verus set_target: raw=%s -> nextDiff=%.0f", tag(), targetHex, m_nextDiff);
+
     return true;
 }
 
@@ -539,6 +547,12 @@ bool xmrig::VerusStratumClient::handleSetDifficulty(const rapidjson::Value &para
     }
 
     m_nextDiff = arr[0].GetDouble();
+
+    // DIAGNOSTIC (temporary): see handleSetTarget()'s comment above -- this settles whether the
+    // pool uses mining.set_difficulty (this path) and shows the raw number the pool sent, to
+    // check against the diff actually shown on each "new job"/"rejected" log line.
+    LOG_INFO("%s verus set_difficulty: raw=%.6f", tag(), m_nextDiff);
+
     return true;
 }
 
