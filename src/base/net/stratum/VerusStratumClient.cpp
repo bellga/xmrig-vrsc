@@ -381,6 +381,20 @@ bool xmrig::VerusStratumClient::handleNotify(const rapidjson::Value &params)
     // see verusscan.cpp's `if (version >= 7 && work->solution[5] > 0)` branch.
     const bool extended = (solution[0] >= 7) && (solution[5] > 0);
 
+    // DIAGNOSTIC (temporary): decode the solution head the same way VerusCoin core's own
+    // CPBaaSSolutionDescriptor(vch) constructor does (primitives/solutiondata.h), so we can see
+    // the real version/descrBits/numPBaaSHeaders/extraDataSize this pool is sending instead of
+    // guessing from length alone. Remove once submissions are confirmed accepted.
+    {
+        const uint32_t descrVersion = solution[0] | (solution[1] << 8) | (solution[2] << 16) | (static_cast<uint32_t>(solution[3]) << 24);
+        const uint8_t  descrBits    = solution[4];
+        const uint8_t  numPBaaS     = solution[5];
+        const uint16_t extraDataSz  = solution[6] | (static_cast<uint16_t>(solution[7]) << 8);
+        LOG_INFO("%s verus solution descriptor: version=%u descrBits=%u numPBaaSHeaders=%u extraDataSize=%u extended=%s head=%02x%02x%02x%02x%02x%02x%02x%02x",
+                  tag(), descrVersion, descrBits, numPBaaS, extraDataSz, extended ? "true" : "false",
+                  solution[0], solution[1], solution[2], solution[3], solution[4], solution[5], solution[6], solution[7]);
+    }
+
     uint8_t nonceSpacePrefix[11] = { 0 };
 
     uint8_t blob[verushash::kInputSize] = { 0 };
@@ -435,6 +449,7 @@ bool xmrig::VerusStratumClient::handleNotify(const rapidjson::Value &params)
     memcpy(m_nbitsRaw, header + kNBitsOff, 4);
     m_solution          = std::move(solution);
     m_extendedSolution  = extended;
+    memcpy(m_nonceSpacePrefix, nonceSpacePrefix, sizeof(m_nonceSpacePrefix));
 
     if (m_job != job) {
         m_job = std::move(job);
@@ -597,7 +612,7 @@ int64_t xmrig::VerusStratumClient::submit(const JobResult &result)
     }
 
     memcpy(submitSolution.data() + (kSolutionSize - verushash::kNonceFieldSize),
-           m_job.blob() + verushash::kNonceOffset, verushash::kNonceFieldSize - 4);
+           m_nonceSpacePrefix, sizeof(m_nonceSpacePrefix));
     memcpy(submitSolution.data() + (kSolutionSize - 4), &localNonce, 4);
 
     char solHex[3 * 2 + kSolutionSize * 2 + 1];

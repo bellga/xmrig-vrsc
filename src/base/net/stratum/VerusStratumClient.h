@@ -86,6 +86,10 @@ private:
     uint8_t m_nbitsRaw[4]  = { 0 };
     Buffer  m_solution;             // original 1344-byte solution, unmodified
     bool    m_extendedSolution = false; // solution[0] >= 7 && solution[5] > 0 (see verushash pipeline notes)
+    uint8_t m_nonceSpacePrefix[11] = { 0 }; // exactly what was hashed into blob[1472..1483) for
+                                             // this job -- stashed here (not re-derived from
+                                             // m_job at submit time) so a job change between a
+                                             // share being found and submitted can't desync it.
     uint64_t m_height = 0;
 
     // target_to_diff_verus()-style diff, when the pool used mining.set_target instead of
