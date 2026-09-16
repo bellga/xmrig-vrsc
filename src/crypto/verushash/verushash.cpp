@@ -19,7 +19,18 @@
 
 #include <cstdlib>
 #include <cstring>
+
+// verushash.cpp is the one file in this directory that didn't already have the ARM/x86 include
+// branch the rest of src/crypto/verushash/ inherited from monkins1010/ccminer's verus/ tree (see
+// haraka.h, haraka_portable.h, verus_clhash.h). It uses only SSE2/SSSE3-level intrinsics
+// (_mm_load_si128, _mm_shuffle_epi8, _mm_xor_si128, _mm_setr_epi8, _mm_store_si128,
+// _mm_loadl_epi64) plus haraka.h's AES-NI macros -- all covered by sse2neon on ARM builds. See
+// sse2neon/README.md for how ARM builds get real AES/PMULL instructions here.
+#ifdef ARM
+#include "sse2neon/sse2neon.h"
+#else
 #include <immintrin.h>
+#endif
 
 extern "C" {
 #include "crypto/verushash/haraka.h"

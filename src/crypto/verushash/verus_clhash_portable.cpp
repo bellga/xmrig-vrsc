@@ -34,12 +34,19 @@
 #include <sys/types.h>
 #endif// APPLE
 
+// Unconditional on the original (x86-only) ccminer source this file was ported from. Nothing in
+// this file actually needs a symbol from <intrin.h>/<x86intrin.h> beyond what verus_clhash.h
+// already pulled in above (either <immintrin.h> or, on ARM, the vendored sse2neon.h shim -- see
+// sse2neon/README.md) -- clmul64() below is plain uint64_t bit ops, no intrinsics at all. Neither
+// header exists on ARM toolchains, so this has to be guarded or ARM builds fail to compile.
+#ifndef ARM
 #ifdef _WIN32
 #pragma warning (disable : 4146)
 #include <intrin.h>
 #else
 #include <x86intrin.h>
 #endif //WIN32
+#endif //!ARM
 
 void clmul64(uint64_t a, uint64_t b, uint64_t* r)
 {
