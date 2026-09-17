@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/usr/bin/env bash
 # termux-build.sh -- build xmrig-vrsc natively on-device for Termux or UserLAnd (ARM64/ARMv7),
 # with automatic per-core tuning (see cmake/arm-cpu-tiers.cmake, step 2 of the mobile/ARM work).
 #
@@ -190,11 +190,31 @@ fi
 # ---------------------------------------------------------------------------
 # 4. Clone or update
 # ---------------------------------------------------------------------------
+# BUILD_DIR defaults to $HOME/xmrig-vrsc -- the same directory the README tells
+# people to `mkdir` and `cd` into before downloading this script (so the file
+# can be fetched with a plain relative-path curl/chmod/run). That means on a
+# first run BUILD_DIR usually already exists and already contains
+# termux-build.sh itself, so a plain `git clone` into it fails with
+# "already exists and is not an empty directory". Handle that case by turning
+# the existing directory into the checkout in place (git init + remote +
+# fetch + checkout -f) instead of requiring an empty target -- this leaves any
+# untracked files (like this script) alone, since checkout only touches
+# tracked paths.
 if [ -d "$BUILD_DIR/.git" ]; then
     log "Existing checkout found at $BUILD_DIR, updating..."
     git -C "$BUILD_DIR" fetch origin "$REPO_REF"
     git -C "$BUILD_DIR" checkout "$REPO_REF"
     git -C "$BUILD_DIR" pull --ff-only origin "$REPO_REF"
+elif [ -d "$BUILD_DIR" ] && [ -n "$(ls -A "$BUILD_DIR" 2>/dev/null)" ]; then
+    log "Non-empty, non-git directory found at $BUILD_DIR (e.g. from downloading this script into it, per the README) -- initializing the repo in place instead of cloning fresh."
+    git -C "$BUILD_DIR" init -q
+    if git -C "$BUILD_DIR" remote get-url origin >/dev/null 2>&1; then
+        git -C "$BUILD_DIR" remote set-url origin "$REPO_URL"
+    else
+        git -C "$BUILD_DIR" remote add origin "$REPO_URL"
+    fi
+    git -C "$BUILD_DIR" fetch origin "$REPO_REF"
+    git -C "$BUILD_DIR" checkout -f "$REPO_REF"
 else
     log "Cloning $REPO_URL (ref: $REPO_REF) into $BUILD_DIR..."
     git clone --branch "$REPO_REF" "$REPO_URL" "$BUILD_DIR"
