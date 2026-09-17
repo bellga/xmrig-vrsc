@@ -24,6 +24,40 @@ The preferred way to configure the miner is the [JSON config file](https://xmrig
 * **[Wizard](https://xmrig.com/wizard)** helps you create initial configuration for the miner.
 * **[Workers](http://workers.xmrig.info)** helps manage your miners via HTTP API.
 
+## VerusHash (VRSC)
+This fork adds VerusHash 2.2 support for mining VRSC (Verus Coin), ported from
+`monkins1010/ccminer`'s VerusHash core into XMRig's threading/pool
+infrastructure, with a dedicated VerusCoin Stratum client. Supported on Linux
+x86-64 (AES-NI/PCLMUL) and ARM64/ARMv7 (NEON, AES/PMULL crypto extension when
+available -- see the Mobile section below).
+
+## Mobile (Termux / UserLAnd, ARM64)
+The ARM port includes optional per-CPU-core tuning (`-mcpu`, see
+`cmake/arm-cpu-tiers.cmake`). To build and run directly on an Android device
+via [Termux](https://termux.dev) or [UserLAnd](https://github.com/CypherpunkArmory/UserLAnd)
+-- no file transfer needed, just copy-paste this into the terminal:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/bellga/xmrig-vrsc/master/termux-build.sh -o termux-build.sh
+chmod +x termux-build.sh
+./termux-build.sh
+```
+
+The script detects Termux vs. UserLAnd (and picks the right package manager
+for each), installs build dependencies, detects your CPU core from
+`/proc/cpuinfo` to pick a tuning tier automatically, and compiles natively
+on-device. If it guesses the wrong core (see the script's own comments for
+its confidence notes on this), override it explicitly:
+
+```bash
+./termux-build.sh cortex-a76      # force a specific -mcpu tier
+ARM_CPU=none ./termux-build.sh    # skip per-core tuning, use the generic ARMv8-A+crypto build
+```
+
+This has been validated by cross-compiling and running the VerusHash core
+under ARM64 emulation, but not yet on real Termux/UserLAnd/Android hardware
+-- if something looks wrong, please open an issue with the script's output.
+
 ## Hash tests
 Run the offline CPU hash suite without pool, API, or miner network dependencies:
 
