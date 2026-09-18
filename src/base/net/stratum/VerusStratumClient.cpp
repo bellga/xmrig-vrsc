@@ -374,26 +374,10 @@ bool xmrig::VerusStratumClient::handleNotify(const rapidjson::Value &params)
         return false;
     }
 
-    LOG_INFO("%s verus solution: pool sent %zu of %zu bytes (job %s)", tag(), solutionHexLen / 2, kSolutionSize, vJobId.GetString());
-
     // solution[0] is a VerusHash "extended solution" format version byte (not the block header's
     // own nVersion field), and solution[5] gates whether this job uses the extended layout --
     // see verusscan.cpp's `if (version >= 7 && work->solution[5] > 0)` branch.
     const bool extended = (solution[0] >= 7) && (solution[5] > 0);
-
-    // DIAGNOSTIC (temporary): decode the solution head the same way VerusCoin core's own
-    // CPBaaSSolutionDescriptor(vch) constructor does (primitives/solutiondata.h), so we can see
-    // the real version/descrBits/numPBaaSHeaders/extraDataSize this pool is sending instead of
-    // guessing from length alone. Remove once submissions are confirmed accepted.
-    {
-        const uint32_t descrVersion = solution[0] | (solution[1] << 8) | (solution[2] << 16) | (static_cast<uint32_t>(solution[3]) << 24);
-        const uint8_t  descrBits    = solution[4];
-        const uint8_t  numPBaaS     = solution[5];
-        const uint16_t extraDataSz  = solution[6] | (static_cast<uint16_t>(solution[7]) << 8);
-        LOG_INFO("%s verus solution descriptor: version=%u descrBits=%u numPBaaSHeaders=%u extraDataSize=%u extended=%s head=%02x%02x%02x%02x%02x%02x%02x%02x",
-                  tag(), descrVersion, descrBits, numPBaaS, extraDataSz, extended ? "true" : "false",
-                  solution[0], solution[1], solution[2], solution[3], solution[4], solution[5], solution[6], solution[7]);
-    }
 
     uint8_t nonceSpacePrefix[11] = { 0 };
 
@@ -443,11 +427,6 @@ bool xmrig::VerusStratumClient::handleNotify(const rapidjson::Value &params)
         if (m_nextDiff > 0.0) {
             job.setDisplayDiff(static_cast<uint64_t>(std::ceil(m_nextDiff)));
         }
-        // DIAGNOSTIC (temporary): confirm the local target actually being used for the share
-        // check, to compare against the diff-based m_target this replaces. Remove once diff
-        // scaling is confirmed correct by acceptance rate.
-        LOG_INFO("%s verus job target: hex=%s -> local target=%llu (display diff=%llu)", tag(), m_nextTargetHex,
-                  static_cast<unsigned long long>(job.target()), static_cast<unsigned long long>(job.diff()));
     } else {
         job.setDiff(m_nextDiff > 0.0 ? static_cast<uint64_t>(std::ceil(m_nextDiff)) : 1);
     }
@@ -567,14 +546,6 @@ bool xmrig::VerusStratumClient::handleSetTarget(const rapidjson::Value &params)
     const double significand = static_cast<double>(targetBits & 0xFFFFFFu);
     m_nextDiff = significand > 0.0 ? std::ldexp(0x0f0f0f / significand, static_cast<int>(exponentDiff)) : 0.0;
 
-    // DIAGNOSTIC (temporary): most shares are being rejected "low difficulty share" even though
-    // a handful ARE accepted -- consistent with the local target (Job::setDiff() -> 64-bit
-    // Monero-style m_target) being systematically looser than what the pool actually enforces,
-    // rather than a data/hash-content bug. This log settles whether the pool even uses
-    // mining.set_target at all (vs. mining.set_difficulty below) and shows the raw value so the
-    // conversion above can be checked against it. Remove once diff scaling is confirmed correct.
-    LOG_INFO("%s verus set_target: raw=%s -> nextDiff=%.0f", tag(), targetHex, m_nextDiff);
-
     return true;
 }
 
@@ -587,11 +558,6 @@ bool xmrig::VerusStratumClient::handleSetDifficulty(const rapidjson::Value &para
     }
 
     m_nextDiff = arr[0].GetDouble();
-
-    // DIAGNOSTIC (temporary): see handleSetTarget()'s comment above -- this settles whether the
-    // pool uses mining.set_difficulty (this path) and shows the raw number the pool sent, to
-    // check against the diff actually shown on each "new job"/"rejected" log line.
-    LOG_INFO("%s verus set_difficulty: raw=%.6f", tag(), m_nextDiff);
 
     return true;
 }
