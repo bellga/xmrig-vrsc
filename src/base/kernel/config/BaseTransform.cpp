@@ -257,6 +257,7 @@ void xmrig::BaseTransform::transform(rapidjson::Document &doc, int key, const ch
 
     case IConfig::BackgroundKey:  /* --background */
     case IConfig::SyslogKey:      /* --syslog */
+    case IConfig::DashboardKey:   /* --dashboard */
     case IConfig::KeepAliveKey:   /* --keepalive */
     case IConfig::NicehashKey:    /* --nicehash */
 #   ifdef XMRIG_FEATURE_TLS
@@ -298,6 +299,9 @@ void xmrig::BaseTransform::transformBoolean(rapidjson::Document &doc, int key, b
 
     case IConfig::SyslogKey: /* --syslog */
         return set(doc, BaseConfig::kSyslog, enable);
+
+    case IConfig::DashboardKey: /* --dashboard */
+        return set(doc, BaseConfig::kDashboard, enable);
 
     case IConfig::KeepAliveKey: /* --keepalive */
         return add(doc, Pools::kPools, Pool::kKeepalive, enable);

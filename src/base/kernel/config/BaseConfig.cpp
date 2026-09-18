@@ -61,6 +61,7 @@ const char *BaseConfig::kBackground     = "background";
 const char *BaseConfig::kBenchAlgoTime  = "bench-algo-time";
 #endif
 const char *BaseConfig::kColors         = "colors";
+const char *BaseConfig::kDashboard      = "dashboard";
 const char *BaseConfig::kDryRun         = "dry-run";
 const char *BaseConfig::kHttp           = "http";
 const char *BaseConfig::kLogFile        = "log-file";
@@ -94,6 +95,7 @@ bool xmrig::BaseConfig::read(const IJsonReader &reader, const char *fileName)
 
     m_autoSave          = reader.getBool(kAutosave, m_autoSave);
     m_background        = reader.getBool(kBackground, m_background);
+    m_dashboard         = reader.getBool(kDashboard, m_dashboard);
     m_dryRun            = reader.getBool(kDryRun, m_dryRun);
 #   ifdef XMRIG_FEATURE_MO_BENCHMARK
     // MoneroOcean: read algo-perf benchmark controls from the base config layer.

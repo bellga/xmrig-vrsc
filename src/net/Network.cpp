@@ -34,6 +34,7 @@
 #include "core/config/Config.h"
 #include "core/Controller.h"
 #include "core/Miner.h"
+#include "net/Dashboard.h"
 #include "net/JobResult.h"
 #include "net/JobResults.h"
 #include "net/strategies/DonateStrategy.h"
@@ -77,6 +78,10 @@ xmrig::Network::Network(Controller *controller) :
     }
 
     m_timer = new Timer(this, kTickInterval, kTickInterval);
+
+    if (Dashboard::isEnabled()) {
+        m_dashboard = new Dashboard(controller);
+    }
 }
 
 
@@ -85,6 +90,7 @@ xmrig::Network::~Network()
     JobResults::stop();
 
     delete m_timer;
+    delete m_dashboard;
     delete m_donate;
     delete m_strategy;
     delete m_state;
@@ -262,13 +268,19 @@ void xmrig::Network::onResultAccepted(IStrategy *, IClient *, const SubmitResult
     uint64_t diff     = result.diff;
     const char *scale = NetworkState::scaleDiff(diff);
 
-    if (error) {
-        LOG_INFO("%s " RED_BOLD("rejected") " (%" PRId64 "/%" PRId64 ") diff " WHITE_BOLD("%" PRIu64 "%s") " " RED("\"%s\"") " " BLACK_BOLD("(%" PRIu64 " ms)"),
-                 backend_tag(result.backend), m_state->accepted(), m_state->rejected(), diff, scale, error, result.elapsed);
+    if (m_dashboard) {
+        m_dashboard->onResult(error == nullptr, diff, scale, result.elapsed);
     }
-    else {
-        LOG_INFO("%s " GREEN_BOLD("accepted") " (%" PRId64 "/%" PRId64 ") diff " WHITE_BOLD("%" PRIu64 "%s") " " BLACK_BOLD("(%" PRIu64 " ms)"),
-                 backend_tag(result.backend), m_state->accepted(), m_state->rejected(), diff, scale, result.elapsed);
+
+    if (!m_dashboard) {
+        if (error) {
+            LOG_INFO("%s " RED_BOLD("rejected") " (%" PRId64 "/%" PRId64 ") diff " WHITE_BOLD("%" PRIu64 "%s") " " RED("\"%s\"") " " BLACK_BOLD("(%" PRIu64 " ms)"),
+                     backend_tag(result.backend), m_state->accepted(), m_state->rejected(), diff, scale, error, result.elapsed);
+        }
+        else {
+            LOG_INFO("%s " GREEN_BOLD("accepted") " (%" PRId64 "/%" PRId64 ") diff " WHITE_BOLD("%" PRIu64 "%s") " " BLACK_BOLD("(%" PRIu64 " ms)"),
+                     backend_tag(result.backend), m_state->accepted(), m_state->rejected(), diff, scale, result.elapsed);
+        }
     }
 }
 
@@ -321,8 +333,14 @@ void xmrig::Network::setJob(IClient *client, const Job &job, bool donate)
             snprintf(height_buf, sizeof(height_buf), " height " WHITE_BOLD("%" PRIu64), job.height());
         }
 
-        LOG_INFO("%s " MAGENTA_BOLD("new job") " from " WHITE_BOLD("%s:%d%s") " diff " WHITE_BOLD("%" PRIu64 "%s") " algo " WHITE_BOLD("%s") "%s%s",
-                 Tags::network(), client->pool().host().data(), client->pool().port(), zmq_buf, diff, scale, job.algorithm().name(), height_buf, tx_buf);
+        if (m_dashboard) {
+            m_dashboard->setPool(client->pool().host().data(), client->pool().port(), job.algorithm().name());
+            m_dashboard->onJob(job.id().data(), diff, scale);
+        }
+        else {
+            LOG_INFO("%s " MAGENTA_BOLD("new job") " from " WHITE_BOLD("%s:%d%s") " diff " WHITE_BOLD("%" PRIu64 "%s") " algo " WHITE_BOLD("%s") "%s%s",
+                     Tags::network(), client->pool().host().data(), client->pool().port(), zmq_buf, diff, scale, job.algorithm().name(), height_buf, tx_buf);
+        }
     }
 
     if (!donate && m_donate) {
@@ -341,6 +359,10 @@ void xmrig::Network::tick()
 
     if (m_donate) {
         m_donate->tick(now);
+    }
+
+    if (m_dashboard) {
+        m_dashboard->tick();
     }
 
 #   ifdef XMRIG_FEATURE_API

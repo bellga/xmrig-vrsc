@@ -54,6 +54,7 @@ public:
     static const char *kBenchAlgoTime;
 #   endif
     static const char *kColors;
+    static const char *kDashboard;
     static const char *kDryRun;
     static const char *kHttp;
     static const char *kLogFile;
@@ -76,6 +77,7 @@ public:
 
     inline bool isAutoSave() const                          { return m_autoSave; }
     inline bool isBackground() const                        { return m_background; }
+    inline bool isDashboard() const                         { return m_dashboard; }
     inline bool isDryRun() const                            { return m_dryRun; }
     inline bool isSyslog() const                            { return m_syslog; }
     inline const char *logFile() const                      { return m_logFile.data(); }
@@ -111,6 +113,7 @@ public:
 protected:
     bool m_autoSave         = true;
     bool m_background       = false;
+    bool m_dashboard        = false;
     bool m_dryRun           = false;
     bool m_syslog           = false;
     bool m_upgrade          = false;

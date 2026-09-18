@@ -60,6 +60,7 @@ static const option options[] = {
     // End MoneroOcean
 #   endif
     { "no-color",              0, nullptr, IConfig::ColorKey              },
+    { "dashboard",             0, nullptr, IConfig::DashboardKey          },
     { "no-huge-pages",         0, nullptr, IConfig::HugePagesKey          },
     { "no-hugepages",          0, nullptr, IConfig::HugePagesKey          },
     { "hugepage-size",         1, nullptr, IConfig::HugePageSizeKey       },

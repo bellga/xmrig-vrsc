@@ -163,6 +163,7 @@ static inline const std::string &usage()
     u += "      --health-print-time=N     print health report every N seconds\n";
 #   endif
     u += "      --no-color                disable colored output\n";
+    u += "      --dashboard               fixed, redrawn mining status panel instead of scrolling log\n";
     u += "      --verbose                 verbose output\n";
 
     u += "\nMisc:\n";

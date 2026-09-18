@@ -37,6 +37,7 @@ namespace xmrig {
 
 
 class Controller;
+class Dashboard;
 class IStrategy;
 class NetworkState;
 
@@ -86,6 +87,7 @@ private:
     IStrategy *m_strategy   = nullptr;
     NetworkState *m_state   = nullptr;
     Timer *m_timer          = nullptr;
+    Dashboard *m_dashboard  = nullptr;
 };
 
 

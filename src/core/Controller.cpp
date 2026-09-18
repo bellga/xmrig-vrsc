@@ -21,6 +21,7 @@
 #include "core/config/Config.h"
 #include "core/Miner.h"
 #include "crypto/common/VirtualMemory.h"
+#include "net/Dashboard.h"
 #include "net/Network.h"
 
 
@@ -51,6 +52,7 @@ int xmrig::Controller::init()
 
     VirtualMemory::init(config()->cpu().memPoolSize(), config()->cpu().hugePageSize());
 
+    Dashboard::setEnabled(config()->isDashboard());
     m_network = std::make_shared<Network>(this);
 
 #   ifdef XMRIG_FEATURE_API
