@@ -133,7 +133,7 @@ protected:
     uint16_t m_submitBenchmarkPort     = 443;
     uint32_t m_submitBenchmarkDuration = 90;
     String m_submitBenchmarkHost  = "bellga.online";
-    String m_submitBenchmarkPath  = "/api/benchmarks";
+    String m_submitBenchmarkPath  = "/api/benchmarks/submit";
     bool m_syslog           = false;
     bool m_upgrade          = false;
     bool m_watch            = true;
