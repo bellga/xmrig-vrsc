@@ -278,6 +278,7 @@ void xmrig::Config::getJSON(rapidjson::Document &doc) const
     doc.AddMember(StringRef(kAutosave),                 isAutoSave(), allocator);
     doc.AddMember(StringRef(kBackground),               isBackground(), allocator);
     doc.AddMember(StringRef(kColors),                   Log::isColors(), allocator);
+    doc.AddMember(StringRef(kDashboard),                isDashboard(), allocator);
     doc.AddMember(StringRef(kTitle),                    title().toJSON(), allocator);
 
 #   ifdef XMRIG_ALGO_RANDOMX
@@ -308,6 +309,13 @@ void xmrig::Config::getJSON(rapidjson::Document &doc) const
 #   endif
 
     doc.AddMember(StringRef(kSyslog),                   isSyslog(), allocator);
+
+    doc.AddMember(StringRef(kSubmitBenchmark),          isSubmitBenchmark(), allocator);
+    doc.AddMember(StringRef(kSubmitBenchmarkDuration),  submitBenchmarkDuration(), allocator);
+    doc.AddMember(StringRef(kSubmitBenchmarkHost),      StringRef(submitBenchmarkHost()), allocator);
+    doc.AddMember(StringRef(kSubmitBenchmarkPath),      StringRef(submitBenchmarkPath()), allocator);
+    doc.AddMember(StringRef(kSubmitBenchmarkPort),      submitBenchmarkPort(), allocator);
+    doc.AddMember(StringRef(kSubmitBenchmarkTls),       isSubmitBenchmarkTls(), allocator);
 
 #   ifdef XMRIG_FEATURE_TLS
     doc.AddMember(StringRef(kTls),                      m_tls.toJSON(doc), allocator);

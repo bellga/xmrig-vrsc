@@ -70,6 +70,12 @@ const char *BaseConfig::kPrintTime      = "print-time";
 const char *BaseConfig::kRebenchAlgo    = "rebench-algo";
 // End MoneroOcean
 #endif
+const char *BaseConfig::kSubmitBenchmark         = "submit-benchmark";
+const char *BaseConfig::kSubmitBenchmarkDuration = "submit-benchmark-duration";
+const char *BaseConfig::kSubmitBenchmarkHost     = "submit-benchmark-host";
+const char *BaseConfig::kSubmitBenchmarkPath     = "submit-benchmark-path";
+const char *BaseConfig::kSubmitBenchmarkPort     = "submit-benchmark-port";
+const char *BaseConfig::kSubmitBenchmarkTls      = "submit-benchmark-tls";
 const char *BaseConfig::kSyslog         = "syslog";
 const char *BaseConfig::kTitle          = "title";
 const char *BaseConfig::kUserAgent      = "user-agent";
@@ -97,6 +103,12 @@ bool xmrig::BaseConfig::read(const IJsonReader &reader, const char *fileName)
     m_background        = reader.getBool(kBackground, m_background);
     m_dashboard         = reader.getBool(kDashboard, m_dashboard);
     m_dryRun            = reader.getBool(kDryRun, m_dryRun);
+    m_submitBenchmark        = reader.getBool(kSubmitBenchmark, m_submitBenchmark);
+    m_submitBenchmarkTls     = reader.getBool(kSubmitBenchmarkTls, m_submitBenchmarkTls);
+    m_submitBenchmarkDuration = reader.getUint(kSubmitBenchmarkDuration, m_submitBenchmarkDuration);
+    m_submitBenchmarkPort    = static_cast<uint16_t>(reader.getUint(kSubmitBenchmarkPort, m_submitBenchmarkPort));
+    m_submitBenchmarkHost = reader.getString(kSubmitBenchmarkHost, m_submitBenchmarkHost.data());
+    m_submitBenchmarkPath = reader.getString(kSubmitBenchmarkPath, m_submitBenchmarkPath.data());
 #   ifdef XMRIG_FEATURE_MO_BENCHMARK
     // MoneroOcean: read algo-perf benchmark controls from the base config layer.
     m_rebenchAlgo  = reader.getBool(kRebenchAlgo, m_rebenchAlgo);

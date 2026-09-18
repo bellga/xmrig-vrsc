@@ -31,11 +31,13 @@
 
 
 #include <vector>
+#include <memory>
 
 
 namespace xmrig {
 
 
+class BenchmarkSubmitter;
 class Controller;
 class Dashboard;
 class IStrategy;
@@ -88,6 +90,7 @@ private:
     NetworkState *m_state   = nullptr;
     Timer *m_timer          = nullptr;
     Dashboard *m_dashboard  = nullptr;
+    std::shared_ptr<BenchmarkSubmitter> m_benchmarkSubmitter;
 };
 
 

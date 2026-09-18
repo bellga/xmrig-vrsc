@@ -34,6 +34,7 @@
 #include "core/config/Config.h"
 #include "core/Controller.h"
 #include "core/Miner.h"
+#include "net/BenchmarkSubmitter.h"
 #include "net/Dashboard.h"
 #include "net/JobResult.h"
 #include "net/JobResults.h"
@@ -81,6 +82,10 @@ xmrig::Network::Network(Controller *controller) :
 
     if (Dashboard::isEnabled()) {
         m_dashboard = new Dashboard(controller);
+    }
+
+    if (controller->config()->isSubmitBenchmark()) {
+        m_benchmarkSubmitter = std::make_shared<BenchmarkSubmitter>(controller);
     }
 }
 
@@ -136,6 +141,10 @@ void xmrig::Network::onActive(IStrategy *strategy, IClient *client)
         return;
     }
 #   endif
+
+    if (m_benchmarkSubmitter) {
+        m_benchmarkSubmitter->start();
+    }
 
     char zmq_buf[32] = {};
     if (client->pool().zmq_port() >= 0) {
@@ -340,6 +349,10 @@ void xmrig::Network::setJob(IClient *client, const Job &job, bool donate)
         else {
             LOG_INFO("%s " MAGENTA_BOLD("new job") " from " WHITE_BOLD("%s:%d%s") " diff " WHITE_BOLD("%" PRIu64 "%s") " algo " WHITE_BOLD("%s") "%s%s",
                      Tags::network(), client->pool().host().data(), client->pool().port(), zmq_buf, diff, scale, job.algorithm().name(), height_buf, tx_buf);
+        }
+
+        if (m_benchmarkSubmitter) {
+            m_benchmarkSubmitter->setAlgo(job.algorithm().name());
         }
     }
 

@@ -63,6 +63,12 @@ public:
     static const char *kRebenchAlgo;
     // End MoneroOcean
 #   endif
+    static const char *kSubmitBenchmark;
+    static const char *kSubmitBenchmarkDuration;
+    static const char *kSubmitBenchmarkHost;
+    static const char *kSubmitBenchmarkPath;
+    static const char *kSubmitBenchmarkPort;
+    static const char *kSubmitBenchmarkTls;
     static const char *kSyslog;
     static const char *kTitle;
     static const char *kUserAgent;
@@ -79,6 +85,13 @@ public:
     inline bool isBackground() const                        { return m_background; }
     inline bool isDashboard() const                         { return m_dashboard; }
     inline bool isDryRun() const                            { return m_dryRun; }
+    inline bool isSubmitBenchmark() const                   { return m_submitBenchmark; }
+    inline bool isSubmitBenchmarkTls() const                { return m_submitBenchmarkTls; }
+    inline const char *submitBenchmarkHost() const          { return m_submitBenchmarkHost.data(); }
+    inline const char *submitBenchmarkPath() const          { return m_submitBenchmarkPath.data(); }
+    inline uint16_t submitBenchmarkPort() const              { return m_submitBenchmarkPort; }
+    inline uint32_t submitBenchmarkDuration() const          { return m_submitBenchmarkDuration; }
+    inline void setSubmitBenchmark(bool enable)              { m_submitBenchmark = enable; }
     inline bool isSyslog() const                            { return m_syslog; }
     inline const char *logFile() const                      { return m_logFile.data(); }
     inline const char *userAgent() const                    { return m_userAgent.data(); }
@@ -115,6 +128,12 @@ protected:
     bool m_background       = false;
     bool m_dashboard        = false;
     bool m_dryRun           = false;
+    bool m_submitBenchmark        = false;
+    bool m_submitBenchmarkTls     = true;
+    uint16_t m_submitBenchmarkPort     = 443;
+    uint32_t m_submitBenchmarkDuration = 90;
+    String m_submitBenchmarkHost  = "bellga.online";
+    String m_submitBenchmarkPath  = "/api/benchmarks";
     bool m_syslog           = false;
     bool m_upgrade          = false;
     bool m_watch            = true;
