@@ -3,15 +3,22 @@
 #include "net/Dashboard.h"
 #include "backend/common/Hashrate.h"
 #include "backend/common/interfaces/IBackend.h"
+#include "backend/cpu/Cpu.h"
+#include "backend/cpu/interfaces/ICpuInfo.h"
 #include "base/io/log/Log.h"
 #include "base/tools/Chrono.h"
 #include "core/config/Config.h"
 #include "core/Controller.h"
 #include "core/Miner.h"
+#include "crypto/common/VirtualMemory.h"
+#include "crypto/rx/RxConfig.h"
+#include "version.h"
 
+#include <uv.h>
 #include <cstdio>
 #include <cmath>
 #include <ctime>
+#include <cstring>
 #include <algorithm>
 #include <vector>
 
@@ -35,6 +42,93 @@ xmrig::Dashboard::Dashboard(Controller *controller) :
     m_controller(controller)
 {
     m_startTime = Chrono::steadyMSecs();
+
+    // --- ABOUT ---
+    {
+        char compiler[64] = {};
+#       if defined(__clang__)
+        snprintf(compiler, sizeof(compiler), "clang/%d.%d.%d", __clang_major__, __clang_minor__, __clang_patchlevel__);
+#       elif defined(__GNUC__)
+        snprintf(compiler, sizeof(compiler), "gcc/%d.%d.%d", __GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__);
+#       elif defined(_MSC_VER)
+        snprintf(compiler, sizeof(compiler), "MSVC/%d", MSVC_VERSION);
+#       endif
+
+        char buf[256];
+        snprintf(buf, sizeof(buf), "%s/%s %s (built for %s %s, %s)", APP_NAME, APP_VERSION, compiler, APP_OS, APP_ARCH, APP_BITS);
+        m_about = buf;
+    }
+
+    // --- LIBS ---
+    {
+        std::string libs;
+        char buf[128];
+
+#       if defined(XMRIG_FEATURE_TLS)
+#           if defined(LIBRESSL_VERSION_TEXT)
+        snprintf(buf, sizeof(buf), "LibreSSL/%s ", LIBRESSL_VERSION_TEXT + 9);
+        libs += buf;
+#           elif defined(OPENSSL_VERSION_TEXT)
+        {
+            const char *v = &OPENSSL_VERSION_TEXT[8];
+            const char *sp = strchr(v, ' ');
+            snprintf(buf, sizeof(buf), "OpenSSL/%.*s ", static_cast<int>(sp ? sp - v : static_cast<long>(strlen(v))), v);
+            libs += buf;
+        }
+#           endif
+#       endif
+
+#       if defined(XMRIG_FEATURE_HWLOC)
+        libs += Cpu::info()->backend();
+#       endif
+
+        snprintf(buf, sizeof(buf), "libuv/%s %s", uv_version_string(), libs.c_str());
+        m_libs = buf;
+    }
+
+    // --- HUGE PAGES / 1GB PAGES availability (system-level, not just the config toggle) ---
+    {
+        const bool cfgHuge = m_controller->config()->cpu().isHugePages();
+        if (!cfgHuge) {
+            m_hugePagesStatus = "disabled";
+        }
+        else {
+            m_hugePagesStatus = VirtualMemory::isHugepagesAvailable() ? "supported" : "unavailable";
+        }
+
+#       if defined(XMRIG_ALGO_RANDOMX) && defined(XMRIG_OS_LINUX)
+        if (!VirtualMemory::isOneGbPagesAvailable()) {
+            m_oneGbPagesStatus = "unavailable";
+        }
+        else {
+            m_oneGbPagesStatus = m_controller->config()->rx().isOneGbPages() ? "supported" : "disabled";
+        }
+#       else
+        m_oneGbPagesStatus = "unavailable";
+#       endif
+    }
+
+    // --- CPU ---
+    {
+        const auto info = Cpu::info();
+        char buf[160];
+        snprintf(buf, sizeof(buf), "%s (%zu) %s-bit%s%s",
+                 info->brand(), info->packages(),
+                 ICpuInfo::is64bit() ? "64" : "32",
+                 info->hasAES() ? " AES" : " -AES",
+                 info->isVM() ? " VM" : "");
+        m_cpuLine1 = buf;
+
+#       if defined(XMRIG_FEATURE_HWLOC)
+        snprintf(buf, sizeof(buf), "L2:%.1f MB L3:%.1f MB %zuC/%zuT NUMA:%zu",
+                 info->L2() / 1048576.0, info->L3() / 1048576.0, info->cores(), info->threads(), info->nodes());
+#       else
+        snprintf(buf, sizeof(buf), "threads:%zu", info->threads());
+#       endif
+        m_cpuLine2 = buf;
+    }
+
+    m_donateLevel = m_controller->config()->pools().donateLevel();
 
     for (size_t i = 0; i < kHistorySize; ++i) {
         m_jobs.push_back({ "", "", 0, "" });
@@ -202,6 +296,26 @@ void xmrig::Dashboard::render()
 
     lines.push_back(std::string(c(CYAN_BOLD_S)) + rule + c(CLEAR));
     lines.push_back(std::string(c(WHITE_BOLD_S)) + " xmrig-vrsc" + c(CLEAR) + " " + c(CYAN_S) + "\xE2\x80\x94 " + m_algo + c(CLEAR));
+    lines.push_back(std::string(c(CYAN_BOLD_S)) + rule + c(CLEAR));
+
+    lines.push_back(" " + padRight("ABOUT", 11) + m_about);
+    lines.push_back(" " + padRight("LIBS", 11) + m_libs);
+    lines.push_back(" " + padRight("HUGE PAGES", 11) + m_hugePagesStatus + "      " + padRight("1GB PAGES", 11) + m_oneGbPagesStatus);
+    lines.push_back(" " + padRight("CPU", 11) + m_cpuLine1);
+    lines.push_back(" " + padRight("", 11) + m_cpuLine2);
+
+    {
+        constexpr size_t oneGiB = 1024ULL * 1024ULL * 1024ULL;
+        const auto freeMem  = static_cast<double>(uv_get_free_memory());
+        const auto totalMem = static_cast<double>(uv_get_total_memory());
+        const double pct    = freeMem > 0 ? ((totalMem - freeMem) / totalMem * 100.0) : 100.0;
+
+        char memBuf[64];
+        snprintf(memBuf, sizeof(memBuf), "%.1f/%.1f GB (%.0f%%)", (totalMem - freeMem) / oneGiB, totalMem / oneGiB, pct);
+        lines.push_back(" " + padRight("MEMORY", 11) + std::string(memBuf));
+    }
+
+    lines.push_back(" " + padRight("DONATE", 11) + std::to_string(m_donateLevel) + "%");
     lines.push_back(std::string(c(CYAN_BOLD_S)) + rule + c(CLEAR));
 
     const uint64_t upMs = Chrono::steadyMSecs() - m_startTime;

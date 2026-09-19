@@ -88,6 +88,19 @@ private:
 
     Controller *m_controller;
 
+    // Captured once at construction -- static for the process lifetime,
+    // same data XMRig's own startup Summary print uses (Summary.cpp,
+    // BaseConfig::printVersions()) -- kept pinned at the top of every
+    // frame instead of relying on the terminal's scrollback to still have
+    // the one-time startup banner around.
+    std::string m_about;
+    std::string m_libs;
+    std::string m_hugePagesStatus;
+    std::string m_oneGbPagesStatus;
+    std::string m_cpuLine1;
+    std::string m_cpuLine2;
+    int m_donateLevel       = 0;
+
     std::string m_poolHost;
     int m_poolPort          = 0;
     std::string m_algo;
