@@ -169,6 +169,22 @@ size_t inline generate<Algorithm::GHOSTRIDER>(Threads<CpuThreads>& threads, uint
 #endif
 
 
+#ifdef XMRIG_ALGO_VERUSHASH
+template<>
+size_t inline generate<Algorithm::VERUSHASH>(Threads<CpuThreads>& threads, uint32_t limit)
+{
+    // Without this specialization, CpuConfig::generate() never creates a
+    // default thread profile for the VERUSHASH family, so
+    // CpuBackend::isEnabled(algorithm) (threads().get(algorithm).isEmpty())
+    // is unconditionally true for "verushash2.2" on any config.json that
+    // doesn't already have a saved profile for it (fresh installs, or any
+    // hand-written config.json) -- the pool then gets rejected with
+    // "incompatible/disabled algorithm" on every job.
+    return generate(Algorithm::kVERUSHASH, threads, Algorithm::VERUSHASH_2_2, limit);
+}
+#endif
+
+
 } /* namespace xmrig */
 
 
