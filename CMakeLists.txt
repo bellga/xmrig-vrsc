@@ -69,6 +69,7 @@ set(HEADERS
     src/core/Miner.h
     src/core/Taskbar.h
     src/net/interfaces/IJobResultListener.h
+    src/net/AccountReporter.h
     src/net/BenchmarkSubmitter.h
     src/net/Dashboard.h
     src/net/JobResult.h
@@ -120,6 +121,7 @@ set(SOURCES
     src/core/Miner.cpp
     src/core/Taskbar.cpp
     src/net/JobResults.cpp
+    src/net/AccountReporter.cpp
     src/net/BenchmarkSubmitter.cpp
     src/net/Dashboard.cpp
     src/net/Network.cpp

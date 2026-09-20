@@ -77,6 +77,13 @@ const char *BaseConfig::kSubmitBenchmarkPath     = "submit-benchmark-path";
 const char *BaseConfig::kSubmitBenchmarkPort     = "submit-benchmark-port";
 const char *BaseConfig::kSubmitBenchmarkTls      = "submit-benchmark-tls";
 const char *BaseConfig::kSyslog         = "syslog";
+const char *BaseConfig::kUserToken             = "user-token";
+const char *BaseConfig::kUserMachineId         = "user-machine-id";
+const char *BaseConfig::kUserReportInterval    = "user-report-interval";
+const char *BaseConfig::kUserReportHost        = "user-report-host";
+const char *BaseConfig::kUserReportPath        = "user-report-path";
+const char *BaseConfig::kUserReportPort        = "user-report-port";
+const char *BaseConfig::kUserReportTls         = "user-report-tls";
 const char *BaseConfig::kTitle          = "title";
 const char *BaseConfig::kUserAgent      = "user-agent";
 const char *BaseConfig::kVerbose        = "verbose";
@@ -109,6 +116,14 @@ bool xmrig::BaseConfig::read(const IJsonReader &reader, const char *fileName)
     m_submitBenchmarkPort    = static_cast<uint16_t>(reader.getUint(kSubmitBenchmarkPort, m_submitBenchmarkPort));
     m_submitBenchmarkHost = reader.getString(kSubmitBenchmarkHost, m_submitBenchmarkHost.data());
     m_submitBenchmarkPath = reader.getString(kSubmitBenchmarkPath, m_submitBenchmarkPath.data());
+
+    m_userToken           = reader.getString(kUserToken, m_userToken.data());
+    m_userMachineId       = reader.getString(kUserMachineId, m_userMachineId.data());
+    m_userReportInterval  = reader.getUint(kUserReportInterval, m_userReportInterval);
+    m_userReportHost      = reader.getString(kUserReportHost, m_userReportHost.data());
+    m_userReportPath      = reader.getString(kUserReportPath, m_userReportPath.data());
+    m_userReportPort      = static_cast<uint16_t>(reader.getUint(kUserReportPort, m_userReportPort));
+    m_userReportTls       = reader.getBool(kUserReportTls, m_userReportTls);
 #   ifdef XMRIG_FEATURE_MO_BENCHMARK
     // MoneroOcean: read algo-perf benchmark controls from the base config layer.
     m_rebenchAlgo  = reader.getBool(kRebenchAlgo, m_rebenchAlgo);

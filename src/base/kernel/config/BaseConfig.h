@@ -70,6 +70,13 @@ public:
     static const char *kSubmitBenchmarkPort;
     static const char *kSubmitBenchmarkTls;
     static const char *kSyslog;
+    static const char *kUserToken;
+    static const char *kUserMachineId;
+    static const char *kUserReportInterval;
+    static const char *kUserReportHost;
+    static const char *kUserReportPath;
+    static const char *kUserReportPort;
+    static const char *kUserReportTls;
     static const char *kTitle;
     static const char *kUserAgent;
     static const char *kVerbose;
@@ -92,6 +99,14 @@ public:
     inline uint16_t submitBenchmarkPort() const              { return m_submitBenchmarkPort; }
     inline uint32_t submitBenchmarkDuration() const          { return m_submitBenchmarkDuration; }
     inline void setSubmitBenchmark(bool enable)              { m_submitBenchmark = enable; }
+    inline const char *userToken() const                    { return m_userToken.data(); }
+    inline const char *userMachineId() const                { return m_userMachineId.data(); }
+    inline uint32_t userReportInterval() const               { return m_userReportInterval; }
+    inline const char *userReportHost() const                { return m_userReportHost.data(); }
+    inline const char *userReportPath() const                { return m_userReportPath.data(); }
+    inline uint16_t userReportPort() const                   { return m_userReportPort; }
+    inline bool isUserReportTls() const                      { return m_userReportTls; }
+    inline void setUserMachineId(const char *id)             { m_userMachineId = id; }
     inline bool isSyslog() const                            { return m_syslog; }
     inline const char *logFile() const                      { return m_logFile.data(); }
     inline const char *userAgent() const                    { return m_userAgent.data(); }
@@ -134,6 +149,13 @@ protected:
     uint32_t m_submitBenchmarkDuration = 90;
     String m_submitBenchmarkHost  = "bellga.online";
     String m_submitBenchmarkPath  = "/api/benchmarks/submit";
+    String m_userToken;
+    String m_userMachineId;
+    bool m_userReportTls          = true;
+    uint16_t m_userReportPort     = 443;
+    uint32_t m_userReportInterval = 60;
+    String m_userReportHost       = "bellga.online";
+    String m_userReportPath       = "/api/accounts/miners/heartbeat";
     bool m_syslog           = false;
     bool m_upgrade          = false;
     bool m_watch            = true;

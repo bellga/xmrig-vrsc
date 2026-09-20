@@ -37,6 +37,7 @@
 namespace xmrig {
 
 
+class AccountReporter;
 class BenchmarkSubmitter;
 class Controller;
 class Dashboard;
@@ -91,6 +92,7 @@ private:
     Timer *m_timer          = nullptr;
     Dashboard *m_dashboard  = nullptr;
     std::shared_ptr<BenchmarkSubmitter> m_benchmarkSubmitter;
+    std::shared_ptr<AccountReporter> m_accountReporter;
 };
 
 

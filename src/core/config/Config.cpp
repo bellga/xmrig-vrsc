@@ -317,6 +317,14 @@ void xmrig::Config::getJSON(rapidjson::Document &doc) const
     doc.AddMember(StringRef(kSubmitBenchmarkPort),      submitBenchmarkPort(), allocator);
     doc.AddMember(StringRef(kSubmitBenchmarkTls),       isSubmitBenchmarkTls(), allocator);
 
+    doc.AddMember(StringRef(kUserToken),                userToken() ? Value(StringRef(userToken())) : Value(kNullType), allocator);
+    doc.AddMember(StringRef(kUserMachineId),             userMachineId() ? Value(StringRef(userMachineId())) : Value(kNullType), allocator);
+    doc.AddMember(StringRef(kUserReportInterval),        userReportInterval(), allocator);
+    doc.AddMember(StringRef(kUserReportHost),            StringRef(userReportHost()), allocator);
+    doc.AddMember(StringRef(kUserReportPath),            StringRef(userReportPath()), allocator);
+    doc.AddMember(StringRef(kUserReportPort),            userReportPort(), allocator);
+    doc.AddMember(StringRef(kUserReportTls),             isUserReportTls(), allocator);
+
 #   ifdef XMRIG_FEATURE_TLS
     doc.AddMember(StringRef(kTls),                      m_tls.toJSON(doc), allocator);
 #   endif

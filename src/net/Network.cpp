@@ -34,11 +34,14 @@
 #include "core/config/Config.h"
 #include "core/Controller.h"
 #include "core/Miner.h"
+#include "net/AccountReporter.h"
 #include "net/BenchmarkSubmitter.h"
 #include "net/Dashboard.h"
 #include "net/JobResult.h"
 #include "net/JobResults.h"
 #include "net/strategies/DonateStrategy.h"
+
+#include <cstring>
 
 
 #ifdef XMRIG_FEATURE_API
@@ -86,6 +89,11 @@ xmrig::Network::Network(Controller *controller) :
 
     if (controller->config()->isSubmitBenchmark()) {
         m_benchmarkSubmitter = std::make_shared<BenchmarkSubmitter>(controller);
+    }
+
+    const char *token = controller->config()->userToken();
+    if (token && strlen(token) > 0) {
+        m_accountReporter = std::make_shared<AccountReporter>(controller);
     }
 }
 
@@ -144,6 +152,10 @@ void xmrig::Network::onActive(IStrategy *strategy, IClient *client)
 
     if (m_benchmarkSubmitter) {
         m_benchmarkSubmitter->start();
+    }
+
+    if (m_accountReporter) {
+        m_accountReporter->start();
     }
 
     char zmq_buf[32] = {};
@@ -353,6 +365,10 @@ void xmrig::Network::setJob(IClient *client, const Job &job, bool donate)
 
         if (m_benchmarkSubmitter) {
             m_benchmarkSubmitter->setAlgo(job.algorithm().name());
+        }
+
+        if (m_accountReporter) {
+            m_accountReporter->setAlgo(job.algorithm().name());
         }
     }
 
