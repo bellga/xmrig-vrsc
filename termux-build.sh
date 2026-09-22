@@ -55,7 +55,53 @@ if [ "$IS_TERMUX" -eq 1 ]; then
     PKG_INSTALL() { pkg install -y "$@"; }
 elif command -v apt-get >/dev/null 2>&1; then
     log "Detected an apt-based userland (UserLAnd/proot-distro Debian or Ubuntu, or generic)."
-    PKG_INSTALL() { sudo apt-get install -y "$@" 2>/dev/null || apt-get install -y "$@"; }
+    # Known proot limitation on some vendor kernels, seen specifically on 32-bit ARM
+    # (armv7l) UserLAnd installs: dpkg fails to unpack a package with
+    # "unable to read link '<path>': Invalid argument" while replacing one of its
+    # symlinks (e.g. Ubuntu's `perl` package ships ~20 of them -- cpan, perl5.40.1,
+    # encguess, h2xs, etc. -- and proot's readlink emulation chokes on one at a time).
+    # Confirmed live on a Moto E7 Power (2026-09-22): removing just the symlink named
+    # in the error and retrying always let dpkg continue. This wrapper automates that
+    # loop instead of requiring a human to read dpkg's stderr and intervene each time.
+    _apt_install_raw() {
+        if command -v sudo >/dev/null 2>&1; then
+            sudo apt-get install -y "$@" 2>&1
+        else
+            apt-get install -y "$@" 2>&1
+        fi
+    }
+    PKG_INSTALL() {
+        local out link tries=0 max_tries=20 rc
+        while true; do
+            # The if/else here (not `out=$(...); rc=$?`) is deliberate: under this
+            # script's `set -e`, a plain assignment whose command substitution fails
+            # aborts the whole script immediately, before rc could ever be inspected --
+            # putting it in an if-condition is the standard way to capture a nonzero
+            # exit status here without triggering that.
+            if out="$(_apt_install_raw "$@")"; then
+                rc=0
+            else
+                rc=$?
+            fi
+            printf '%s\n' "$out" >&2
+            [ "$rc" -eq 0 ] && return 0
+
+            link="$(printf '%s' "$out" | grep -oP "unable to read link '\.\K[^']+" | head -1)"
+            if [ -z "$link" ] || [ "$tries" -ge "$max_tries" ]; then
+                return "$rc"
+            fi
+
+            tries=$((tries + 1))
+            warn "UserLAnd/proot symlink bug hit on '$link' (dpkg readlink EINVAL -- known proot limitation, see README's 32-bit ARM note). Removing it and retrying ($tries/$max_tries)..."
+            if command -v sudo >/dev/null 2>&1; then
+                sudo rm -f "$link"
+                sudo dpkg --configure -a >/dev/null 2>&1 || true
+            else
+                rm -f "$link"
+                dpkg --configure -a >/dev/null 2>&1 || true
+            fi
+        done
+    }
 else
     die "Neither Termux's 'pkg' nor 'apt-get' found. This script only knows how to install dependencies on Termux or an apt-based userland (UserLAnd/proot-distro). Install git, cmake, a C/C++ compiler, libuv, OpenSSL and (optionally) hwloc dev packages by hand, then re-run with the corresponding install step skipped, or open an issue with your environment's package manager."
 fi
@@ -178,6 +224,10 @@ if [ "$IS_TERMUX" -eq 1 ]; then
     fi
     export CC=clang CXX=clang++
 else
+    # A stale/inconsistent apt package cache (common on UserLAnd images that sat
+    # unused for a while) can itself produce a wall of "unmet dependencies" before
+    # even reaching the proot symlink issue above -- refreshing first avoids that.
+    (command -v sudo >/dev/null 2>&1 && sudo apt-get update) || apt-get update || true
     PKG_INSTALL git cmake build-essential libuv1-dev libssl-dev
     if PKG_INSTALL libhwloc-dev; then
         WITH_HWLOC_FLAG="-DWITH_HWLOC=ON"

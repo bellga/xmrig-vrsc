@@ -31,11 +31,12 @@ infrastructure, with a dedicated VerusCoin Stratum client. Supported on Linux
 x86-64 (AES-NI/PCLMUL) and ARM64/ARMv7 (NEON, AES/PMULL crypto extension when
 available -- see the Mobile section below).
 
-## Mobile (Termux / UserLAnd, ARM64)
+## Mobile (Termux / UserLAnd, ARM64 and ARMv7)
 The ARM port includes optional per-CPU-core tuning (`-mcpu`, see
-`cmake/arm-cpu-tiers.cmake`). To build and run directly on an Android device
-via [Termux](https://termux.dev) or [UserLAnd](https://github.com/CypherpunkArmory/UserLAnd)
--- no file transfer needed, just copy-paste this into the terminal:
+`cmake/arm-cpu-tiers.cmake`, ARM64 only for now). To build and run directly
+on an Android device via [Termux](https://termux.dev) or
+[UserLAnd](https://github.com/CypherpunkArmory/UserLAnd) -- no file transfer
+needed, just copy-paste this into the terminal:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/bellga/xmrig-vrsc/master/termux-build.sh -o termux-build.sh
@@ -54,9 +55,21 @@ its confidence notes on this), override it explicitly:
 ARM_CPU=none ./termux-build.sh    # skip per-core tuning, use the generic ARMv8-A+crypto build
 ```
 
-This has been validated by cross-compiling and running the VerusHash core
-under ARM64 emulation, but not yet on real Termux/UserLAnd/Android hardware
--- if something looks wrong, please open an issue with the script's output.
+Confirmed working end-to-end on real hardware: ARM64 (Termux and UserLAnd,
+2026-09-17) and 32-bit ARMv7 (UserLAnd on a Moto E7 Power, Cortex-A53,
+2026-09-22 -- ~500-530 KH/s across 8 threads using the software AES/PMULL
+fallback described in the warning above, mining VerusHash live against a
+pool). If something looks wrong on your device, please open an issue with
+the script's output.
+
+**Note for UserLAnd on 32-bit ARM (armv7l) userlands specifically:** the
+dependency-install step below works around a known `proot` limitation on
+some vendor kernels, where `dpkg` fails to unpack a package with
+`unable to read link '<path>': Invalid argument` while replacing a symlink
+(hit repeatedly on Ubuntu's `perl` package during testing). The script now
+detects that specific error and retries automatically; if it's a *different*
+package failing the same way, it should still self-heal, but please open an
+issue with the output if it doesn't.
 
 ## Hash tests
 Run the offline CPU hash suite without pool, API, or miner network dependencies:
