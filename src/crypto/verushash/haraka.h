@@ -35,11 +35,8 @@ Optimized Implementations for Haraka256 and Haraka512
 
 #define NUMROUNDS 5
 
-#ifdef _WIN32
-typedef unsigned long long u64;
-#else
-typedef unsigned long u64;
-#endif
+#include <stdint.h>
+typedef uint64_t u64;
 typedef __m128i u128;
 
 extern u128 rc[40];
@@ -144,11 +141,9 @@ Optimized Implementations for Haraka256 and Haraka512
 
 #define NUMROUNDS 5
 
-#ifdef _WIN32
-typedef unsigned long long u64;
-#else
-typedef unsigned long u64;
-#endif
+#include <stdint.h>
+#include <string.h>
+typedef uint64_t u64;
 typedef __m128i u128;
 
 extern u128 rc[40];
@@ -227,11 +222,16 @@ extern u128 rc[40];
   s1 = _mm_unpacklo_epi32(s2, s3); \
   s2 = _mm_unpackhi_epi32(s1, tmp); 
 
+// memcpy, not a raw pointer-cast store: `out` is a byte buffer with no alignment guarantee, and
+// strict-alignment targets (32-bit ARM) fault on unaligned 8-byte stores that x86-64/aarch64
+// silently tolerate. The source side (&s0 etc.) is a compiler-aligned SIMD local, so only the
+// destination needed this; memcpy on both sides keeps it symmetric and lets the compiler still
+// emit a single aligned store where it can prove one is safe.
 #define TRUNCSTORE(out, s0, s1, s2, s3) \
-  *(u64*)(out) = *(((u64*)&s0 + 1)); \
-  *(u64*)(out + 8) = *(((u64*)&s1 + 1)); \
-  *(u64*)(out + 16) = *(((u64*)&s2 + 0)); \
-  *(u64*)(out + 24) = *(((u64*)&s3 + 0));
+  memcpy((out) + 0,  (u64*)&(s0) + 1, sizeof(u64)); \
+  memcpy((out) + 8,  (u64*)&(s1) + 1, sizeof(u64)); \
+  memcpy((out) + 16, (u64*)&(s2) + 0, sizeof(u64)); \
+  memcpy((out) + 24, (u64*)&(s3) + 0, sizeof(u64));
 
 void load_constants();
 void test_implementations();

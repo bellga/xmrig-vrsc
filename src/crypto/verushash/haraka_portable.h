@@ -9,11 +9,8 @@
 
 #define NUMROUNDS 5
 
-#ifdef _WIN32
-typedef unsigned long long u64;
-#else
-typedef unsigned long u64;
-#endif
+#include <stdint.h>
+typedef uint64_t u64;
 typedef __m128i u128;
 
 extern void aesenc(unsigned char *s, const unsigned char *rk);
