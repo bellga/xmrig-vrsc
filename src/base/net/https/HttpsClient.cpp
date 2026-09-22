@@ -145,24 +145,43 @@ bool xmrig::HttpsClient::verify(X509 *cert)
         return false;
     }
 
-    if (!verifyFingerprint(cert)) {
-        if (!isQuiet()) {
-            LOG_ERR("[%s:%d] Failed to verify server certificate fingerprint", host(), port());
+    // computeFingerprint() only fails when the *local* SHA-256 computation itself couldn't run (e.g.
+    // OpenSSL's digest lookup returning null -- seen in the wild inside some sandboxed/proot ARM
+    // userlands where library loading is flaky, see claude/porte-verushash-spec.md's proot notes for
+    // the same class of environment issue). That's a local problem, not evidence the certificate is
+    // bad, so it must not be conflated with an actual pinned-fingerprint mismatch below.
+    const bool computed = computeFingerprint(cert);
 
-            if (strlen(m_fingerprint) == 64 && !req().fingerprint.isNull()) {
-                LOG_ERR("\"%s\" was given", m_fingerprint);
-                LOG_ERR("\"%s\" was configured", req().fingerprint.data());
+    if (!req().fingerprint.isNull()) {
+        // Pinning was explicitly requested: fail closed either way here, since "couldn't verify"
+        // and "verified and it doesn't match" both mean the pin can't be trusted.
+        if (!computed || strncasecmp(m_fingerprint, req().fingerprint.data(), 64) != 0) {
+            if (!isQuiet()) {
+                LOG_ERR("[%s:%d] Failed to verify server certificate fingerprint", host(), port());
+
+                if (computed) {
+                    LOG_ERR("\"%s\" was given", m_fingerprint);
+                    LOG_ERR("\"%s\" was configured", req().fingerprint.data());
+                }
             }
+
+            return false;
         }
 
-        return false;
+        return true;
+    }
+
+    // No pinning configured: the fingerprint is purely informational (tlsFingerprint()), so a local
+    // failure to compute it is not a reason to reject an otherwise-successful TLS handshake.
+    if (!computed && !isQuiet()) {
+        LOG_WARN("[%s:%d] Couldn't compute the server certificate's fingerprint locally (informational only -- no pinning was configured, so the connection continues)", host(), port());
     }
 
     return true;
 }
 
 
-bool xmrig::HttpsClient::verifyFingerprint(X509 *cert)
+bool xmrig::HttpsClient::computeFingerprint(X509 *cert)
 {
     const EVP_MD *digest = EVP_get_digestbyname("sha256");
     if (digest == nullptr) {
@@ -178,7 +197,7 @@ bool xmrig::HttpsClient::verifyFingerprint(X509 *cert)
 
     Cvt::toHex(m_fingerprint, sizeof(m_fingerprint), md, 32);
 
-    return req().fingerprint.isNull() || strncasecmp(m_fingerprint, req().fingerprint.data(), 64) == 0;
+    return true;
 }
 
 

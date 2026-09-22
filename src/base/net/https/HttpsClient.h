@@ -54,7 +54,7 @@ private:
     void write(std::string &&data, bool close) override;
 
     bool verify(X509 *cert);
-    bool verifyFingerprint(X509 *cert);
+    bool computeFingerprint(X509 *cert);
     void flush(bool close);
 
     BIO *m_read                         = nullptr;

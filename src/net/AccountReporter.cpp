@@ -161,6 +161,17 @@ void xmrig::AccountReporter::sendHeartbeat()
 
 void xmrig::AccountReporter::onHttpData(const HttpData &data)
 {
+    // data.status is negative for a transport/TLS-layer failure (no HTTP response was ever received --
+    // see HttpData::statusName(), which already knows to render that via uv_strerror instead of as an
+    // HTTP status code) and >=100 for an actual HTTP status once a response came back. Only the latter
+    // says anything about the account/token; a negative status is a network or TLS problem and telling
+    // someone to go check their token for one is actively misleading.
+    if (data.status < 0) {
+        LOG_ERR("%s " RED_BOLD("account heartbeat failed") " -- %s (network/TLS error, unrelated to user-token)",
+                Tags::config(), data.statusName());
+        return;
+    }
+
     if (data.status < 200 || data.status >= 300) {
         LOG_ERR("%s " RED_BOLD("account heartbeat failed") " -- HTTP %d (check user-token in config.json)",
                 Tags::config(), data.status);

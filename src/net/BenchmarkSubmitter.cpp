@@ -147,7 +147,7 @@ void xmrig::BenchmarkSubmitter::onHttpData(const HttpData &data)
         m_controller->config()->save();
     }
     else {
-        LOG_ERR("%s " RED_BOLD("benchmark submission failed") " -- HTTP %d, will NOT retry automatically (flag left on, safe to try again on next start)",
-                Tags::config(), data.status);
+        LOG_ERR("%s " RED_BOLD("benchmark submission failed") " -- %s, will NOT retry automatically (flag left on, safe to try again on next start)",
+                Tags::config(), data.statusName());
     }
 }
