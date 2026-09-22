@@ -153,7 +153,14 @@ void xmrig::AccountReporter::sendHeartbeat()
                       m_controller->config()->userReportPath(),
                       doc,
                       m_controller->config()->isUserReportTls(),
-                      true); // quiet: heartbeat failures every interval shouldn't spam the log
+                      false); // quiet was true, but that also hides *which* of HttpClient/HttpsClient's
+                              // several distinct error paths (DNS, connect, TLS verify, HTTP parse) is
+                              // actually firing behind AccountReporter's own generic one-line message
+                              // below -- turned off while chasing a live "-71 (protocol error)" report
+                              // whose exact cause (of two remaining candidates after the fingerprint fix
+                              // in HttpsClient.cpp) isn't yet pinned down. onHttpData() below still only
+                              // logs once per failed interval either way, so this isn't the spam the
+                              // original comment was about.
 
     fetch(Tags::config(), std::move(req), shared_from_this());
 }

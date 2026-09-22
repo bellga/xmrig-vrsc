@@ -128,6 +128,14 @@ bool xmrig::HttpContext::parse(const char *data, size_t size)
 }
 
 
+const char *xmrig::HttpContext::parseErrorReason() const
+{
+    // Only meaningful right after parse() returned false -- llhttp keeps its errno/reason from the
+    // execute() call that failed until the next execute() resets them.
+    return llhttp_get_error_reason(m_parser);
+}
+
+
 std::string xmrig::HttpContext::ip() const
 {
     char ip[46]           = {};

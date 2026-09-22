@@ -63,6 +63,7 @@ public:
 
     bool isRequest() const override;
     bool parse(const char *data, size_t size);
+    const char *parseErrorReason() const;
     std::string ip() const override;
     uint64_t elapsed() const;
     void close(int status = 0);

@@ -120,6 +120,14 @@ void xmrig::HttpClient::handshake()
 void xmrig::HttpClient::read(const char *data, size_t size)
 {
     if (!parse(data, size)) {
+        // No log existed here before -- a parse failure and HttpsClient::verify()'s cert==nullptr
+        // branch (see HttpsClient.cpp) both closed with the identical bare UV_EPROTO, indistinguishable
+        // in a log without a debugger. This one means the TLS layer (if any) was fine and something
+        // arrived that llhttp doesn't consider valid HTTP.
+        if (!isQuiet()) {
+            LOG_ERR("%s " RED("HTTP parse error: ") RED_BOLD("\"%s\""), tag(), parseErrorReason());
+        }
+
         close(UV_EPROTO);
     }
 }

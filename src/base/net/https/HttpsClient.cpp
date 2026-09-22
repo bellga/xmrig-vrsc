@@ -142,6 +142,15 @@ void xmrig::HttpsClient::write(std::string &&data, bool close)
 bool xmrig::HttpsClient::verify(X509 *cert)
 {
     if (cert == nullptr) {
+        // No log existed for this branch at all before -- silent false all the way up to a bare
+        // UV_EPROTO close, indistinguishable from the llhttp parse-failure path in
+        // HttpClient::read() (the only other close(UV_EPROTO) site) without a debugger. Distinguishing
+        // the two matters: this one means the handshake itself produced no usable peer certificate;
+        // that one means the handshake was fine but the decrypted response wasn't valid HTTP.
+        if (!isQuiet()) {
+            LOG_ERR("[%s:%d] TLS handshake reported success but no peer certificate was available", host(), port());
+        }
+
         return false;
     }
 
