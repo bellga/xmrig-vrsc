@@ -25,6 +25,7 @@
 #include "base/net/dns/Dns.h"
 #include "base/net/dns/DnsRecords.h"
 #include "base/net/tools/NetBuffer.h"
+#include "base/tools/Cvt.h"
 #include "base/tools/Timer.h"
 
 
@@ -126,6 +127,15 @@ void xmrig::HttpClient::read(const char *data, size_t size)
         // arrived that llhttp doesn't consider valid HTTP.
         if (!isQuiet()) {
             LOG_ERR("%s " RED("HTTP parse error: ") RED_BOLD("\"%s\""), tag(), parseErrorReason());
+
+            // A manual curl test of the same endpoint (from a working x86-64 client) returned a
+            // completely standard, ASCII-only response, so whatever this build's llhttp actually
+            // received either differs from that or is being handed to it wrong -- can't tell which
+            // without seeing the literal bytes. Capped well above any response this small API sends,
+            // just as a safety margin against ever dumping something huge to the log.
+            const size_t dumpLen = size < 4096 ? size : 4096;
+            LOG_ERR("%s raw bytes received (%zu of %zu, hex): %s", tag(), dumpLen, size,
+                     Cvt::toHex(reinterpret_cast<const uint8_t *>(data), dumpLen).data());
         }
 
         close(UV_EPROTO);
