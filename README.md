@@ -55,6 +55,15 @@ its confidence notes on this), override it explicitly:
 ARM_CPU=none ./termux-build.sh    # skip per-core tuning, use the generic ARMv8-A+crypto build
 ```
 
+On ARM64 with the crypto extension, VerusHash's clhash step uses a native
+NEON/PMULL implementation (`src/crypto/verushash/verus_clhash_neon.cpp`,
+bit-identical to the reference). To compare hashrate against the previous
+sse2neon path on your device, rebuild with it turned off:
+
+```bash
+WITH_VERUS_NEON=OFF ./termux-build.sh   # old sse2neon clhash path (A/B benchmarking)
+```
+
 Confirmed working end-to-end on real hardware: ARM64 (Termux and UserLAnd,
 2026-09-17) and 32-bit ARMv7 (UserLAnd on a Moto E7 Power, Cortex-A53,
 2026-09-22 -- ~500-530 KH/s across 8 threads using the software AES/PMULL

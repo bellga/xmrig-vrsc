@@ -62,6 +62,15 @@ void destroy(Context *ctx);
 // differs from the last call on this same `ctx`.
 void hash(const uint8_t *blob, size_t size, uint8_t *output, Context *ctx);
 
+// Same result as hash(), for the mining hot loop: instead of comparing the whole fixed part of
+// `blob` against the cached copy on every call, it reuses the cached per-job state as long as
+// `blob` is the same buffer as last time. The caller MUST call invalidate() whenever bytes
+// [0, kNonceOffset) of that buffer may have changed (new job, benchmark mutation, ...).
+void hashCached(const uint8_t *blob, size_t size, uint8_t *output, Context *ctx);
+
+// Drops the cached per-job state; the next hash()/hashCached() rebuilds it from the blob.
+void invalidate(Context *ctx);
+
 
 } // namespace verushash
 } // namespace xmrig

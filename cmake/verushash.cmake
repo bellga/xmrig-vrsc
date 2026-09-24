@@ -40,6 +40,22 @@ if (WITH_VERUSHASH)
             src/crypto/verushash/verushash.cpp
             PROPERTIES COMPILE_DEFINITIONS "ARM"
         )
+
+        # Native AArch64 NEON/Crypto clhash (verus_clhash_neon.cpp): same result as
+        # verusclhashv2_2(), written straight to PMULL/SQRDMULH/AESE instead of via sse2neon.
+        # Needs AArch64 + the Crypto extension (vmull_p64); ARMv7 and crypto-less toolchains keep
+        # the sse2neon path. -DWITH_VERUS_NEON=OFF forces the old path (for A/B benchmarking).
+        if (WITH_VERUS_NEON AND ARM_TARGET EQUAL 8 AND XMRIG_ARM_CRYPTO)
+            list(APPEND HEADERS_CRYPTO src/crypto/verushash/verus_clhash_neon.h)
+            list(APPEND SOURCES_CRYPTO src/crypto/verushash/verus_clhash_neon.cpp)
+            set_source_files_properties(
+                src/crypto/verushash/verushash.cpp
+                PROPERTIES COMPILE_DEFINITIONS "ARM;XMRIG_VERUS_NEON"
+            )
+            message(STATUS "VerusHash: native AArch64 NEON clhash enabled")
+        else()
+            message(STATUS "VerusHash: NEON clhash disabled, using sse2neon path")
+        endif()
     else()
         # verus_clhash.cpp uses _mm_clmulepi64_si128 (PCLMUL) directly, which is not implied by the
         # tree-wide -maes flag; verushash.cpp uses AES-NI intrinsics via haraka.h. GCC/Clang refuse to

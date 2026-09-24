@@ -284,6 +284,7 @@ bool xmrig::CpuWorker<N>::selfTest()
 
         uint8_t out[32];
         verushash::hash(buf, sizeof(buf), out, m_verusCtx);
+        verushash::invalidate(m_verusCtx); // don't let the test blob's cached state leak into mining
 
         return (N == 1) && memcmp(out, reference, 32) == 0;
     }
@@ -425,7 +426,15 @@ void xmrig::CpuWorker<N>::start()
 #               ifdef XMRIG_ALGO_VERUSHASH
                 case Algorithm::VERUSHASH:
                     if (N == 1) {
-                        verushash::hash(m_job.blob(), job.size(), m_hash, m_verusCtx);
+#                       ifdef XMRIG_FEATURE_BENCHMARK
+                        // the benchmark loop above XORs into the blob's first bytes every hash
+                        if (m_benchSize) {
+                            verushash::invalidate(m_verusCtx);
+                        }
+#                       endif
+                        // Per-job state is rebuilt only after consumeJob() invalidates it (or the
+                        // blob buffer changes), not re-checked with a 1.5 KB memcmp per nonce.
+                        verushash::hashCached(m_job.blob(), job.size(), m_hash, m_verusCtx);
                     } else {
                         valid = false;
                     }
@@ -650,6 +659,13 @@ void xmrig::CpuWorker<N>::consumeJob()
 #   endif
 
     m_job.add(job, count, Nonce::CPU);
+
+#   ifdef XMRIG_ALGO_VERUSHASH
+    // add() may have copied a new blob into the buffer hashCached() reads -- drop its cache.
+    if (m_verusCtx) {
+        verushash::invalidate(m_verusCtx);
+    }
+#   endif
 
 #   ifdef XMRIG_ALGO_RANDOMX
     if (m_job.currentJob().algorithm().family() == Algorithm::RANDOM_X) {

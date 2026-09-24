@@ -37,6 +37,9 @@ extern "C" {
 #include "crypto/verushash/haraka_portable.h"
 }
 #include "crypto/verushash/verus_clhash.h"
+#ifdef XMRIG_VERUS_NEON
+#include "crypto/verushash/verus_clhash_neon.h"
+#endif
 
 
 namespace xmrig {
@@ -177,6 +180,7 @@ struct Context
     alignas(16) uint8_t blockhash_half[64] = { 0 };
     uint8_t cachedPrefix[kNonceOffset]     = { 0 }; // last-seen fixed (non-nonce) part of the blob
     bool    havePrefix                     = false;
+    const uint8_t *cachedBlob              = nullptr; // blob buffer the cached state came from (hashCached)
 
     uint32_t fixrand[32]   = { 0 };
     uint32_t fixrandex[32] = { 0 };
@@ -208,14 +212,31 @@ void destroy(Context *ctx)
 }
 
 
-void hash(const uint8_t *blob, size_t size, uint8_t *output, Context *ctx)
+void invalidate(Context *ctx)
+{
+    ctx->havePrefix = false;
+    ctx->cachedBlob = nullptr;
+}
+
+
+namespace {
+
+template<bool kTrustCache>
+inline void hashImpl(const uint8_t *blob, size_t size, uint8_t *output, Context *ctx)
 {
     if (size != kInputSize) {
         memset(output, 0, 32);
         return;
     }
 
-    const bool jobChanged = !ctx->havePrefix || memcmp(ctx->cachedPrefix, blob, kNonceOffset) != 0;
+    // hash(): compare the whole 1472-byte fixed part on every call (safe for any caller).
+    // hashCached(): trust the cache unless invalidate() was called or the blob buffer moved --
+    // skips a ~1.5 KB memcmp per nonce (~14% of the hash on ARM, see
+    // claude/estudo-ccminer-arm-oink.md). The prefix copy is still kept so the two stay
+    // interchangeable on the same Context.
+    const bool jobChanged = kTrustCache
+        ? (!ctx->havePrefix || ctx->cachedBlob != blob)
+        : (!ctx->havePrefix || memcmp(ctx->cachedPrefix, blob, kNonceOffset) != 0);
 
     if (jobChanged) {
         verusHashHalf(ctx->blockhash_half, blob, static_cast<int>(kInputSize));
@@ -223,6 +244,7 @@ void hash(const uint8_t *blob, size_t size, uint8_t *output, Context *ctx)
 
         memcpy(ctx->cachedPrefix, blob, kNonceOffset);
         ctx->havePrefix = true;
+        ctx->cachedBlob = blob;
     }
 
     // Per-nonce step == ccminer/monkins1010's Verus2hash (verusscan.cpp), operating on a local
@@ -239,7 +261,12 @@ void hash(const uint8_t *blob, size_t size, uint8_t *output, Context *ctx)
 
     memcpy(curBuf + 32, blob + kNonceOffset, kNonceFieldSize);
 
+#   ifdef XMRIG_VERUS_NEON
+    // Native AArch64 path, bit-identical to verusclhashv2_2 (see verus_clhash_neon.cpp).
+    uint64_t intermediate = verusclhashv2_2_neon(ctx->data_key, curBuf, 511, ctx->fixrand, ctx->fixrandex, ctx->data_key_prand, ctx->data_key_prandex);
+#   else
     uint64_t intermediate = verusclhashv2_2(ctx->data_key, curBuf, 511, ctx->fixrand, ctx->fixrandex, ctx->data_key_prand, ctx->data_key_prandex);
+#   endif
 
     const __m128i fill2 = _mm_shuffle_epi8(_mm_loadl_epi64(reinterpret_cast<const u128 *>(&intermediate)), shuf2);
     _mm_store_si128(reinterpret_cast<u128 *>(&curBuf[32 + 16]), fill2);
@@ -254,6 +281,20 @@ void hash(const uint8_t *blob, size_t size, uint8_t *output, Context *ctx)
         ctx->data_key[ctx->fixrandex[i]] = ctx->data_key_prandex[i];
         ctx->data_key[ctx->fixrand[i]]   = ctx->data_key_prand[i];
     }
+}
+
+} // namespace
+
+
+void hash(const uint8_t *blob, size_t size, uint8_t *output, Context *ctx)
+{
+    hashImpl<false>(blob, size, output, ctx);
+}
+
+
+void hashCached(const uint8_t *blob, size_t size, uint8_t *output, Context *ctx)
+{
+    hashImpl<true>(blob, size, output, ctx);
 }
 
 
