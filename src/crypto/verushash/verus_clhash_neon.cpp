@@ -20,6 +20,11 @@
  * result whenever prand == prandex (~0.32% of hashes, measured). The store order here is the
  * reference one. See claude/estudo-ccminer-arm-oink.md in the project notes.
  *
+ * Unlike verusclhashv2_2(), this does not save each mutated entry's old value into g_prand/
+ * g_prandex on every iteration (64 extra stores per hash): the caller keeps a pristine copy of the
+ * key table (`master`) and restores the 64 touched entries from it after the hash (FixKey), and
+ * the saturation fallback below restores from it too. fixrand/fixrandex still record the indices.
+ *
  * Built only for ARMv8 (AArch64) with the Crypto extension (see cmake/verushash.cmake);
  * everything else keeps using verus_clhash.cpp.
  */
@@ -130,7 +135,7 @@ static inline uint64_t reduce64(v128 A)
 
 template<bool kExact>
 static inline v128 clmul_loop(v128 *randomsource, const unsigned char buf[64], uint64_t keyMask,
-                              uint32_t *fixrand, uint32_t *fixrandex, v128 *g_prand, v128 *g_prandex)
+                              uint32_t *fixrand, uint32_t *fixrandex)
 {
     const v128 *b = reinterpret_cast<const v128 *>(buf);
 
@@ -150,8 +155,6 @@ static inline v128 clmul_loop(v128 *randomsource, const unsigned char buf[64], u
         const v128 *pbuf  = pbuf_copy + (selector & 3);
         const v128 *pbufo = pbuf + ((selector & 1) ? -1 : 1);   // pbuf[(selector & 1) ? -1 : 1]
 
-        st(&g_prand[i], ld(prand));
-        st(&g_prandex[i], ld(prandex));
         fixrand[i]   = prand_idx;
         fixrandex[i] = prandex_idx;
 
@@ -332,26 +335,25 @@ static inline v128 clmul_loop(v128 *randomsource, const unsigned char buf[64], u
 
 
 uint64_t verusclhashv2_2_neon(void *random, const unsigned char buf[64], uint64_t keyMask,
-                              uint32_t *fixrand, uint32_t *fixrandex, void *g_prand_, void *g_prandex_)
+                              uint32_t *fixrand, uint32_t *fixrandex, const void *master_)
 {
     v128 *randomsource = static_cast<v128 *>(random);
-    v128 *g_prand      = static_cast<v128 *>(g_prand_);
-    v128 *g_prandex    = static_cast<v128 *>(g_prandex_);
+    const v128 *master = static_cast<const v128 *>(master_);
 
     const uint64_t fpsr = fpsr_read(vdupq_n_u8(0));
     fpsr_write(fpsr & ~kFpsrQC);
 
-    v128 acc = clmul_loop<false>(randomsource, buf, keyMask, fixrand, fixrandex, g_prand, g_prandex);
+    v128 acc = clmul_loop<false>(randomsource, buf, keyMask, fixrand, fixrandex);
 
     if (fpsr_read(acc) & kFpsrQC) {
-        // A -32768*-32768 lane saturated somewhere: undo this attempt's key mutations (same
-        // reverse walk as FixKey) and redo it with the bit-exact mulhrs.
+        // A -32768*-32768 lane saturated somewhere: undo this attempt's key mutations from the
+        // pristine copy and redo it with the bit-exact mulhrs.
         for (int i = 31; i > -1; i--) {
-            st(randomsource + fixrandex[i], ld(g_prandex + i));
-            st(randomsource + fixrand[i], ld(g_prand + i));
+            st(randomsource + fixrandex[i], ld(master + fixrandex[i]));
+            st(randomsource + fixrand[i], ld(master + fixrand[i]));
         }
 
-        acc = clmul_loop<true>(randomsource, buf, keyMask, fixrand, fixrandex, g_prand, g_prandex);
+        acc = clmul_loop<true>(randomsource, buf, keyMask, fixrand, fixrandex);
     }
 
     fpsr_write(fpsr);

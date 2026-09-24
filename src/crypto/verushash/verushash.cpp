@@ -184,6 +184,12 @@ struct Context
 
     uint32_t fixrand[32]   = { 0 };
     uint32_t fixrandex[32] = { 0 };
+
+#   ifdef XMRIG_VERUS_NEON
+    // Pristine copy of the key table (refreshed with it once per job). The NEON clhash doesn't
+    // save each mutated entry's old value; FixKey restores the touched entries from here instead.
+    u128 *master = nullptr;
+#   endif
 };
 
 
@@ -197,6 +203,11 @@ Context *create()
     ctx->data_key_prand   = ctx->data_key + kKeyEntries128;
     ctx->data_key_prandex = ctx->data_key + kKeyEntries128 + 32;
 
+#   ifdef XMRIG_VERUS_NEON
+    ctx->master = static_cast<u128 *>(malloc(kKeyBytes));
+    memset(ctx->master, 0, kKeyBytes);
+#   endif
+
     return ctx;
 }
 
@@ -208,6 +219,9 @@ void destroy(Context *ctx)
     }
 
     free(ctx->data_key);
+#   ifdef XMRIG_VERUS_NEON
+    free(ctx->master);
+#   endif
     delete ctx;
 }
 
@@ -241,6 +255,9 @@ inline void hashImpl(const uint8_t *blob, size_t size, uint8_t *output, Context 
     if (jobChanged) {
         verusHashHalf(ctx->blockhash_half, blob, static_cast<int>(kInputSize));
         genNewClKey(ctx->blockhash_half, ctx->data_key);
+#       ifdef XMRIG_VERUS_NEON
+        memcpy(ctx->master, ctx->data_key, kKeyBytes);
+#       endif
 
         memcpy(ctx->cachedPrefix, blob, kNonceOffset);
         ctx->havePrefix = true;
@@ -263,7 +280,7 @@ inline void hashImpl(const uint8_t *blob, size_t size, uint8_t *output, Context 
 
 #   ifdef XMRIG_VERUS_NEON
     // Native AArch64 path, bit-identical to verusclhashv2_2 (see verus_clhash_neon.cpp).
-    uint64_t intermediate = verusclhashv2_2_neon(ctx->data_key, curBuf, 511, ctx->fixrand, ctx->fixrandex, ctx->data_key_prand, ctx->data_key_prandex);
+    uint64_t intermediate = verusclhashv2_2_neon(ctx->data_key, curBuf, 511, ctx->fixrand, ctx->fixrandex, ctx->master);
 #   else
     uint64_t intermediate = verusclhashv2_2(ctx->data_key, curBuf, 511, ctx->fixrand, ctx->fixrandex, ctx->data_key_prand, ctx->data_key_prandex);
 #   endif
@@ -276,11 +293,27 @@ inline void hashImpl(const uint8_t *blob, size_t size, uint8_t *output, Context 
     harakaKeyedFull(output, curBuf, ctx->data_key + intermediate);
 
     // FixKey: undo the ~32 entries verusclhashv2_2 mutated in data_key so the table is correct
-    // again for the next nonce attempt without re-running GenNewCLKey.
+    // again for the next nonce attempt without re-running GenNewCLKey. Pointers are hoisted into
+    // locals on purpose: read through `ctx->` the compiler must assume the table stores can
+    // modify them and reloads all of them every iteration (clang: 512 -> ~200 instructions/hash).
+    u128 *const key            = ctx->data_key;
+    const uint32_t *const fr   = ctx->fixrand;
+    const uint32_t *const frx  = ctx->fixrandex;
+
+#   ifdef XMRIG_VERUS_NEON
+    const u128 *const master = ctx->master;
     for (int i = 31; i > -1; i--) {
-        ctx->data_key[ctx->fixrandex[i]] = ctx->data_key_prandex[i];
-        ctx->data_key[ctx->fixrand[i]]   = ctx->data_key_prand[i];
+        key[frx[i]] = master[frx[i]];
+        key[fr[i]]  = master[fr[i]];
     }
+#   else
+    const u128 *const gp  = ctx->data_key_prand;
+    const u128 *const gpx = ctx->data_key_prandex;
+    for (int i = 31; i > -1; i--) {
+        key[frx[i]] = gpx[i];
+        key[fr[i]]  = gp[i];
+    }
+#   endif
 }
 
 } // namespace
